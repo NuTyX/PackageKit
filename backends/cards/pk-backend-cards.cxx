@@ -224,7 +224,6 @@ pk_backend_get_roles(PkBackend *backend)
 	PkBitfield roles;
 	roles = pk_bitfield_from_enums(
                 PK_ROLE_ENUM_CANCEL,
-                PK_ROLE_ENUM_GET_DETAILS,
                 PK_ROLE_ENUM_GET_FILES,
                 PK_ROLE_ENUM_RESOLVE,
                 PK_ROLE_ENUM_REFRESH_CACHE,
