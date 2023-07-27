@@ -15,6 +15,10 @@ Job::Job(PkBackendJob *job) :
 Job::~Job()
 {
 	delete m_cache;
+	for (auto pkg : m_packageSet) {
+		if (pkg)
+			delete pkg;
+	}
 }
 bool Job::init()
 {
@@ -49,7 +53,6 @@ PkBackendJob *Job::pkJob() const
 
 void Job::resolvePackageIds(gchar **package_ids, PkBitfield filters)
 {
-	Pkg* pkg = new Pkg;
 	g_debug("resolvePackgesIds");
 
 	pk_backend_job_set_status (m_job, PK_STATUS_ENUM_QUERY);
@@ -62,17 +65,25 @@ void Job::resolvePackageIds(gchar **package_ids, PkBitfield filters)
 			break;
 		std::string pi = package_ids[i];
 		for (auto p: m_cache->getListOfPackagesNames()) {
-			if (p != pi)
-				continue;
-			pkg->setName(p);
-			pkg->setDescription(m_cache->getDescription(p));
-			pkg->setArch(m_cache->getArch(p));
-			pkg->setVersion(m_cache->getVersion(p));
-			pkg->setCollection(m_cache->getCollection(p));
-			m_packageSet.insert(pkg);
+			cards::Cache* pkg = new cards::Cache;
+			std::string::size_type pos;
+			pos = convertToLowerCase(m_cache->getCollection(p)).find(convertToLowerCase(pi));
+			if (pos == std::string::npos)
+				pos = convertToLowerCase(p).find(convertToLowerCase(pi));
+			if (pos == std::string::npos)
+				pos = convertToLowerCase(m_cache->getDescription(p)).find(convertToLowerCase(pi));
+			if (pos == std::string::npos)
+				pos = convertToLowerCase(m_cache->getVersion(p)).find(convertToLowerCase(pi));
+			if (pos != std::string::npos) {
+				pkg->name(p);
+				pkg->description(m_cache->getDescription(p));
+				pkg->arch(m_cache->getArch(p));
+				pkg->version(m_cache->getVersion(p));
+				pkg->collection(m_cache->getCollection(p));
+				m_packageSet.insert(pkg);
+			}
 		}
 	}
-
 }
 
 gchar* Job::matchPackage(const std::string &package)
@@ -132,11 +143,11 @@ void Job::emitPackages(PkBitfield filters, PkInfoEnum state, bool multiversion)
 		if(m_cancel)
 			break;
 
-		std::string d = p->getDescription();
-		std::string v = p->getVersion();
-		std::string a = p->getArch();
-		std::string c = p->getCollection();
-		std::string pi = p->getName() + ";" + v + ";" + a + ";" + c;
+		std::string d = p->description();
+		std::string v = p->version();
+		std::string a = p->arch();
+		std::string c = p->collection();
+		std::string pi = p->name() + ";" + v + ";" + a + ";" + c;
 		pk_backend_job_package(m_job, PK_INFO_ENUM_INSTALLED, pi.c_str(), d.c_str());
 	}
 }
