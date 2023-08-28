@@ -1,5 +1,5 @@
 project('PackageKit', 'c',
-  version : '1.2.7',
+  version : '1.2.8',
   license : 'LGPL-2.1+',
   meson_version : '>=0.50',
   default_options : ['warning_level=2', 'c_std=c99'],
@@ -101,7 +101,7 @@ config_dep = declare_dependency(
 
 pk_db_dir = join_paths(get_option('localstatedir'), 'lib', 'PackageKit')
 local_state_dir = get_option('localstatedir')
-test_data_dir = join_paths(meson.source_root(), 'data', 'tests')
+test_data_dir = join_paths(meson.source_root(), 'tests', 'data')
 package_data_dir = get_option('datadir')
 package_locale_dir = join_paths(get_option('prefix'), get_option('datadir'), 'locale')
 pk_plugin_dir = join_paths(get_option('prefix'), get_option('libdir'), 'packagekit-backend')
