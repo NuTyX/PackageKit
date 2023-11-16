@@ -1204,10 +1204,6 @@ msgstr "Următoarele pachete trebuiesc eliminate:"
 msgid "The following packages have to be updated:"
 msgstr "Următoarele pachete trebuiesc actualizate:"
 
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "Vârsta maximă a cache-ului pentru metadate. Folosiți -1 pentru „niciodată”."
-
 #. TRANSLATORS: tell the user what package provides the command
 msgid "The package providing this file is:"
 msgstr "Pachetul care furnizează fișierul acesta este:"

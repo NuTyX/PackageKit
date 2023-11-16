@@ -632,7 +632,7 @@ msgstr "패키지 설치"
 #. command
 #, c-format
 msgid "Install package '%s' to provide command '%s'?"
-msgstr "'%s' 명령을 제공하는 '%s' 꾸러미를 설치하시겠습니까?"
+msgstr "'%2$s' 명령을 제공하는 '%1$s' 꾸러미를 설치하시겠습니까?"
 
 #. SECURITY:
 #. - Normal users need authentication to install signed packages
@@ -1224,10 +1224,6 @@ msgstr "다음 패키지를 제거해야 합니다:"
 #. TRANSLATORS: When processing, we might have to update other dependencies
 msgid "The following packages have to be updated:"
 msgstr "다음 패키지를 갱신해야 합니다:"
-
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "최대 메타데이터 캐시 시간입니다. -1을 입력하면 캐시하지 않습니다."
 
 #. TRANSLATORS: tell the user what package provides the command
 msgid "The package providing this file is:"

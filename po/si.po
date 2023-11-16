@@ -1202,10 +1202,6 @@ msgstr "පහත පැකේජ ඉවත් කළ යුතුය:"
 msgid "The following packages have to be updated:"
 msgstr "පහත පැකේජ යාවත්කාලීන කළ යුතුය:"
 
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "උපරිම පාරදත්ත හැඹිලි වයස. 'කවදාවත්' සඳහා -1 භාවිතා කරන්න."
-
 #. TRANSLATORS: tell the user what package provides the command
 msgid "The package providing this file is:"
 msgstr "මෙම ගොනුව සපයන පැකේජය වන්නේ:"

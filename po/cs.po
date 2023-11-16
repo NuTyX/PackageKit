@@ -1231,10 +1231,6 @@ msgstr "Následující balíčky musí být odebrány:"
 msgid "The following packages have to be updated:"
 msgstr "Následující balíčky musí být aktualizovány:"
 
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "Nejvyšší stáří mezipaměti metadat, -1 znamená „nikdy“."
-
 #. TRANSLATORS: tell the user what package provides the command
 msgid "The package providing this file is:"
 msgstr "Balíček poskytující tento soubor je:"

@@ -1211,10 +1211,6 @@ msgstr "Les paquets suivants vont être désinstallés :"
 msgid "The following packages have to be updated:"
 msgstr "Les paquets suivants doivent être mis à jour :"
 
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "L'âge maximal du cache des métadonnées. Utilisez -1 pour « jamais »."
-
 #. TRANSLATORS: tell the user what package provides the command
 msgid "The package providing this file is:"
 msgstr "Le paquet fournissant ce fichier est :"

@@ -280,10 +280,6 @@ msgstr "Hora del systema"
 msgid "The daemon crashed mid-transaction!"
 msgstr "Le demone se ha terminate anormalmente in le medio del transaction!"
 
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "Le etate maxime del cache de metadatos. Usa -1 pro 'nunquam'."
-
 #. TRANSLATORS: The network settings could not be sent
 msgid "The proxy could not be set"
 msgstr "Le proxy non poteva esser activate"

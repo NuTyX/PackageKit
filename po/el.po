@@ -1141,10 +1141,6 @@ msgstr "Τα παρακάτω πακέτα πρέπει να αφαιρεθού�
 msgid "The following packages have to be updated:"
 msgstr "Τα παρακάτω πακέτα πρέπει να ενημερωθούν:"
 
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "Η μέγιστη ηλικία μνήμης μεταδεδομένων. Χρησιμοποιήστε -1 για 'ποτέ'."
-
 #. TRANSLATORS: tell the user what package provides the command
 msgid "The package providing this file is:"
 msgstr "Το πακέτο που παρέχει αυτό το αρχείο είναι το:"

@@ -1058,10 +1058,6 @@ msgstr "Šie paketai turi būti pašalinti:"
 msgid "The following packages have to be updated:"
 msgstr "Šie paketai turi būti atnaujinti:"
 
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "Maksimalus podėlyje esančių metaduomenų senumas. Naudokite -1 neribotam."
-
 #. TRANSLATORS: tell the user what package provides the command
 msgid "The package providing this file is:"
 msgstr "Paketas, suteikiantis šį failą yra:"

@@ -1229,10 +1229,6 @@ msgstr "Aşağıdaki paketler kaldırılmalıdır:"
 msgid "The following packages have to be updated:"
 msgstr "Aşağıdaki paketler yükseltilmelidir:"
 
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "Üst verinin önbellekte en fazla tutulma zamanı. 'Asla' için -1 kullanın."
-
 #. TRANSLATORS: tell the user what package provides the command
 msgid "The package providing this file is:"
 msgstr "Bu dosyayı içeren paket:"

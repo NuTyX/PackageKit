@@ -1226,10 +1226,6 @@ msgstr "Følgende pakker er nødt til at blive fjernet:"
 msgid "The following packages have to be updated:"
 msgstr "Følgende pakker er nødt til at blive opdateret:"
 
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "Maksimumalderen for metadatamellemlager. Brug -1 for »aldrig«."
-
 #. TRANSLATORS: tell the user what package provides the command
 msgid "The package providing this file is:"
 msgstr "Pakken der leverer denne fil er:"

@@ -1203,10 +1203,6 @@ msgstr "I pachets chi sot a son stâts gjavâts:"
 msgid "The following packages have to be updated:"
 msgstr "I pachets chi sot a son stâts inzornâts:"
 
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "La etât massime de cache dai metadâts. Dopre -1 par 'mai'."
-
 #. TRANSLATORS: tell the user what package provides the command
 msgid "The package providing this file is:"
 msgstr "Il pachet che al furnìs chest file al è:"

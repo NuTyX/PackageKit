@@ -1223,10 +1223,6 @@ msgstr "Naslednje pakete je treba odstraniti:"
 msgid "The following packages have to be updated:"
 msgstr "Posodobiti je treba naslednje pakete:"
 
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "Največja starost predpomnilnika metapodakov. Uporabite -1 za 'nikoli'."
-
 #. TRANSLATORS: tell the user what package provides the command
 msgid "The package providing this file is:"
 msgstr "Paket, ki zagotavlja to datoteko, je:"

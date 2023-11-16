@@ -1229,10 +1229,6 @@ msgstr "A következő csomagokat el kell távolítani:"
 msgid "The following packages have to be updated:"
 msgstr "A következő csomagokat kell frissíteni:"
 
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "A metaadat-gyorsítótár maximális kora. A -1 = soha nem jár le."
-
 #. TRANSLATORS: tell the user what package provides the command
 msgid "The package providing this file is:"
 msgstr "A fájlt biztosító csomag:"

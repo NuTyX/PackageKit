@@ -1206,10 +1206,6 @@ msgstr "Paket berikut mesti dihapus:"
 msgid "The following packages have to be updated:"
 msgstr "Paket berikut mesti dimutakhirkan:"
 
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "Umur maksimum singgahan metadata. Gunakan -1 untuk 'tak pernah'."
-
 #. TRANSLATORS: tell the user what package provides the command
 msgid "The package providing this file is:"
 msgstr "Paket yang menyediakan berkas ini adalah:"

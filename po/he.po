@@ -1205,10 +1205,6 @@ msgstr "יש להסיר את החבילות הבאות:"
 msgid "The following packages have to be updated:"
 msgstr "יש לעדכן את החבילות הבאות:"
 
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "הגיל המרבי של זיכרון מטמון נתוני העל. -1 מייצג את ‚אף פעם לא’."
-
 #. TRANSLATORS: tell the user what package provides the command
 msgid "The package providing this file is:"
 msgstr "החבילה המספקת את הקובץ הזה:"

@@ -1208,10 +1208,6 @@ msgstr "S'han d'eliminar els següents paquets:"
 msgid "The following packages have to be updated:"
 msgstr "S'han d'actualitzar els següents paquets:"
 
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "L'antiguitat màxima de la memòria cau de les metadades. Utilitzeu -1 per a «mai»."
-
 #. TRANSLATORS: tell the user what package provides the command
 msgid "The package providing this file is:"
 msgstr "El paquet que proveeix aquest fitxer és:"

@@ -1209,10 +1209,6 @@ msgstr "Nasledujúce balíky budú musieť byť odstránené:"
 msgid "The following packages have to be updated:"
 msgstr "Nasledujúce balíky budú musieť byť aktualizované:"
 
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "Maximálny vek metadát vo vyrovnávacej pamäti. -1 znamená nepoužívať vyrovnávaciu pamäť."
-
 #. TRANSLATORS: tell the user what package provides the command
 msgid "The package providing this file is:"
 msgstr "Balík poskytujúci tento súbor je:"

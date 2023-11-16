@@ -1235,10 +1235,6 @@ msgstr "Следующие пакеты должны быть удалены:"
 msgid "The following packages have to be updated:"
 msgstr "Следующие пакеты должны быть обновлены:"
 
-#. TRANSLATORS: command line argument, just output without fancy formatting
-msgid "The maximum metadata cache age. Use -1 for 'never'."
-msgstr "Максимальное время хранения метаданных в кэше. -1 — не ограничено."
-
 #. TRANSLATORS: tell the user what package provides the command
 msgid "The package providing this file is:"
 msgstr "Пакет, предоставляющий этот файл:"
