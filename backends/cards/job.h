@@ -40,6 +40,12 @@ public:
 	PkBackendJob *pkJob() const;
 
 	/**
+	  * Get the list of packages
+	  *  generate m_packageSet, if the list is empty no package was found
+	  */
+	void resolvePackages(PkBitfield filters = PK_FILTER_ENUM_NONE);
+
+	/**
 	  * Tries to find a list of packages mathing the package ids
 	  *  generate m_packageSet, if the list is empty no package was found
 	  */

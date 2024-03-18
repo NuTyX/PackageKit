@@ -206,6 +206,21 @@ pk_backend_resolve (PkBackend *backend, PkBackendJob *job, PkBitfield filters, g
 {
 	pk_backend_job_thread_create(job, pk_backend_resolve_thread, NULL, NULL);
 }
+
+void
+pk_backend_get_packages (PkBackend *backend, PkBackendJob *job, PkBitfield filters)
+{
+	pk_backend_job_set_status (job, PK_STATUS_ENUM_REQUEST);
+
+	auto cards = static_cast<Job*>(pk_backend_job_get_user_data(job));
+	if (!cards->init()) {
+		g_debug("Failed to create cards cache");
+		return;
+	}
+	cards->resolvePackages(filters);
+	cards->emitPackages(filters,PK_INFO_ENUM_UNKNOWN, true);
+	pk_backend_job_finished (job);
+}
 void
 pk_backend_install_packages (PkBackend *backend, PkBackendJob *job, PkBitfield transaction_flags, gchar **package_ids)
 {
@@ -226,6 +241,7 @@ pk_backend_get_roles(PkBackend *backend)
 	roles = pk_bitfield_from_enums(
                 PK_ROLE_ENUM_CANCEL,
                 PK_ROLE_ENUM_GET_FILES,
+                PK_ROLE_ENUM_GET_PACKAGES,
                 PK_ROLE_ENUM_RESOLVE,
                 PK_ROLE_ENUM_REFRESH_CACHE,
                 PK_ROLE_ENUM_GET_UPDATES,

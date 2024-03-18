@@ -50,7 +50,22 @@ PkBackendJob *Job::pkJob() const
 {
 	return m_job;
 }
+void Job::resolvePackages(PkBitfield filters)
+{
+	g_debug("resolvePackgesIds");
 
+	pk_backend_job_set_status (m_job, PK_STATUS_ENUM_QUERY);
+
+	for (auto p: m_cache->getListOfPackagesNames()) {
+		cards::Cache* pkg = new cards::Cache;
+		pkg->name(p);
+		pkg->description(m_cache->getDescription(p));
+		pkg->arch(m_cache->getArch(p));
+		pkg->version(m_cache->getVersion(p));
+		pkg->collection(m_cache->getCollection(p));
+		m_packageSet.insert(pkg);
+	}
+}
 void Job::resolvePackageIds(gchar **package_ids, PkBitfield filters)
 {
 	g_debug("resolvePackgesIds");
