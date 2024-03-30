@@ -113,6 +113,7 @@ pk_offline_update_progress_cb (PkProgress *progress,
 	PkStatusEnum status;
 	gint percentage;
 	g_autofree gchar *msg = NULL;
+	g_autofree gchar *tmp_perc = NULL;
 	g_autoptr(PkPackage) pkg = NULL;
 
 	switch (type) {
@@ -145,8 +146,6 @@ pk_offline_update_progress_cb (PkProgress *progress,
 				  pk_package_get_data (pkg));
 		break;
 	case PK_PROGRESS_TYPE_PERCENTAGE:
-		g_autofree gchar *tmp_perc = NULL;
-
 		g_object_get (progress, "percentage", &percentage, NULL);
 		if (percentage < 0)
 			return;
@@ -159,11 +158,11 @@ pk_offline_update_progress_cb (PkProgress *progress,
 		if (role == PK_ROLE_ENUM_UPGRADE_SYSTEM) {
 			/* TRANSLATORS: this is the message we send plymouth to
 			 * advise of the new percentage completion when installing system upgrades */
-			msg = g_strdup_printf ("%s – %s", _("Installing System Upgrade"), tmp_perc);
+			msg = g_strdup_printf ("%s — %s", _("Installing System Upgrade"), tmp_perc);
 		} else {
 			/* TRANSLATORS: this is the message we send plymouth to
 			 * advise of the new percentage completion when installing updates */
-			msg = g_strdup_printf ("%s – %s", _("Installing Updates"), tmp_perc);
+			msg = g_strdup_printf ("%s — %s", _("Installing Updates"), tmp_perc);
 		}
 		if (percentage > 10)
 			pk_offline_update_set_plymouth_msg (msg);
