@@ -22,7 +22,7 @@ Job::~Job()
 }
 bool Job::init()
 {
-	m_cache = new Pkgdbh;
+	m_cache = new pkgdbh;
 
 	if (m_cache->getListOfPackagesNames().size() > 0)
 		return true;
@@ -57,7 +57,7 @@ void Job::resolvePackages(PkBitfield filters)
 	pk_backend_job_set_status (m_job, PK_STATUS_ENUM_QUERY);
 
 	for (auto p: m_cache->getListOfPackagesNames()) {
-		cards::Cache* pkg = new cards::Cache;
+		cards::cache* pkg = new cards::cache;
 		pkg->name(p);
 		pkg->description(m_cache->getDescription(p));
 		pkg->arch(m_cache->getArch(p));

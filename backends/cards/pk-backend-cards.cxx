@@ -127,8 +127,8 @@ backend_refresh_cache_thread(PkBackendJob *job, GVariant *params, gpointer user_
 {
 	pk_backend_job_set_status(job, PK_STATUS_ENUM_REFRESH_CACHE);
 	pk_backend_job_set_percentage (job, 0);
-	Pkgsync Sync;
-	Sync.run();
+	cards::sync sync;
+	sync.run();
 	pk_backend_job_set_percentage (job, 100);
 	pk_backend_job_finished (job);
 }

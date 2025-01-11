@@ -88,8 +88,8 @@ public:
 
 
 private:
-	Pkgdbh *m_cache;
-	std::set<cards::Cache*> m_packageSet;
+	pkgdbh *m_cache;
+	std::set<cards::cache*> m_packageSet;
 	PkBackendJob *m_job;
 	bool	m_cancel;
 	pid_t m_child_pid;
