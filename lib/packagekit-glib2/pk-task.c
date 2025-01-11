@@ -36,8 +36,6 @@
 
 static void     pk_task_finalize	(GObject     *object);
 
-#define PK_TASK_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), PK_TYPE_TASK, PkTaskPrivate))
-
 #define PK_TASK_TRANSACTION_CANCELLED_RETRY_TIMEOUT	2000 /* ms */
 
 /**
@@ -58,12 +56,14 @@ struct _PkTaskPrivate
 enum {
 	PROP_0,
 	PROP_SIMULATE,
-	PROP_ONLY_PREPARE,
+	PROP_ONLY_DOWNLOAD,
 	PROP_ONLY_TRUSTED,
 	PROP_ALLOW_REINSTALL,
 	PROP_ALLOW_DOWNGRADE,
 	PROP_LAST
 };
+
+static GParamSpec *obj_properties[PROP_LAST] = { NULL, };
 
 /**
  * PkTaskState:
@@ -100,7 +100,7 @@ typedef struct {
 	guint				 retry_id;
 } PkTaskState;
 
-G_DEFINE_TYPE (PkTask, pk_task, PK_TYPE_CLIENT)
+G_DEFINE_TYPE_WITH_PRIVATE (PkTask, pk_task, PK_TYPE_CLIENT)
 
 static void pk_task_ready_cb (GObject *source_object, GAsyncResult *res, gpointer user_data);
 
@@ -120,10 +120,12 @@ pk_task_generate_request_id (void)
 static inline GTask *
 pk_task_find_by_request (PkTask *task, guint request)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
+
 	g_return_val_if_fail (PK_IS_TASK (task), NULL);
 	g_return_val_if_fail (request != 0, NULL);
 
-	return g_hash_table_lookup (task->priv->gtasks, GUINT_TO_POINTER (request));
+	return g_hash_table_lookup (priv->gtasks, GUINT_TO_POINTER (request));
 }
 
 /*
@@ -154,6 +156,7 @@ static void
 pk_task_do_async_action (GTask *gtask)
 {
 	PkTask *task = g_task_get_source_object (gtask);
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state = g_task_get_task_data (gtask);
 	GCancellable *cancellable = g_task_get_cancellable (gtask);
 	PkBitfield transaction_flags;
@@ -163,15 +166,15 @@ pk_task_do_async_action (GTask *gtask)
 
 	/* only prepare the transaction */
 	transaction_flags = state->transaction_flags;
-	if (task->priv->only_download) {
+	if (priv->only_download) {
 		pk_bitfield_add (transaction_flags,
 				 PK_TRANSACTION_FLAG_ENUM_ONLY_DOWNLOAD);
 	}
-	if (task->priv->allow_reinstall) {
+	if (priv->allow_reinstall) {
 		pk_bitfield_add (transaction_flags,
 				PK_TRANSACTION_FLAG_ENUM_ALLOW_REINSTALL);
 	}
-	if (task->priv->allow_downgrade) {
+	if (priv->allow_downgrade) {
 		pk_bitfield_add (transaction_flags,
 				PK_TRANSACTION_FLAG_ENUM_ALLOW_DOWNGRADE);
 	}
@@ -517,7 +520,7 @@ pk_task_install_signatures_ready_cb (GObject *source_object, GAsyncResult *res, 
 static void
 pk_task_install_signatures (GTask *given_gtask)
 {
-	g_autoptr(GTask) gtask = given_gtask;
+	GTask *gtask = given_gtask;
 	PkTask *task = g_task_get_source_object (gtask);
 	PkTaskState *state = g_task_get_task_data (gtask);
 	PkRepoSignatureRequired *item;
@@ -560,7 +563,7 @@ pk_task_install_signatures (GTask *given_gtask)
 	cancellable = g_task_get_cancellable (gtask);
 	pk_client_install_signature_async (PK_CLIENT(task), type, key_id, package_id,
 					   cancellable, state->progress_callback, state->progress_user_data,
-					   pk_task_install_signatures_ready_cb, g_steal_pointer (&gtask));
+					   pk_task_install_signatures_ready_cb, g_object_ref (gtask));
 }
 
 /*
@@ -610,7 +613,7 @@ pk_task_accept_eulas_ready_cb (GObject *source_object, GAsyncResult *res, gpoint
 static void
 pk_task_accept_eulas (GTask *given_gtask)
 {
-	g_autoptr(GTask) gtask = given_gtask;
+	GTask *gtask = given_gtask;
 	PkTask *task = g_task_get_source_object (gtask);
 	PkTaskState *state = g_task_get_task_data (gtask);
 	PkEulaRequired *item;
@@ -647,7 +650,7 @@ pk_task_accept_eulas (GTask *given_gtask)
 	cancellable = g_task_get_cancellable (gtask);
 	pk_client_accept_eula_async (PK_CLIENT(task), eula_id,
 				     cancellable, state->progress_callback, state->progress_user_data,
-				     pk_task_accept_eulas_ready_cb, g_steal_pointer (&gtask));
+				     pk_task_accept_eulas_ready_cb, g_object_ref (gtask));
 }
 
 /*
@@ -697,20 +700,20 @@ pk_task_repair_ready_cb (GObject *source_object, GAsyncResult *res, gpointer use
 static gboolean
 pk_task_user_accepted_idle_cb (gpointer user_data)
 {
-	g_autoptr(GTask) gtask = user_data;
+	GTask *gtask = user_data;
 	PkTaskState *state = g_task_get_task_data (gtask);
 
 	/* this needs another step in the dance */
 	if (state->exit_enum == PK_EXIT_ENUM_KEY_REQUIRED) {
 		g_debug ("need to do install-sig");
-		pk_task_install_signatures (g_steal_pointer (&gtask));
+		pk_task_install_signatures (gtask);
 		return FALSE;
 	}
 
 	/* this needs another step in the dance */
 	if (state->exit_enum == PK_EXIT_ENUM_EULA_REQUIRED) {
 		g_debug ("need to do accept-eula");
-		pk_task_accept_eulas (g_steal_pointer (&gtask));
+		pk_task_accept_eulas (gtask);
 		return FALSE;
 	}
 
@@ -724,13 +727,13 @@ pk_task_user_accepted_idle_cb (gpointer user_data)
 					       cancellable,
 					       state->progress_callback,
 					       state->progress_user_data,
-					       (GAsyncReadyCallback) pk_task_repair_ready_cb, g_steal_pointer (&gtask));
+					       (GAsyncReadyCallback) pk_task_repair_ready_cb, g_object_ref (gtask));
 		return FALSE;
 	}
 
 	/* doing task */
 	g_debug ("continuing with request %i", state->request);
-	pk_task_do_async_action (g_steal_pointer (&gtask));
+	pk_task_do_async_action (g_object_ref (gtask));
 	return FALSE;
 }
 
@@ -771,7 +774,7 @@ pk_task_user_accepted (PkTask *task, guint request)
 static gboolean
 pk_task_user_declined_idle_cb (gpointer user_data)
 {
-	g_autoptr(GTask) gtask = user_data;
+	GTask *gtask = user_data;
 	PkTaskState *state;
 
 	state = g_task_get_task_data (gtask);
@@ -1002,7 +1005,7 @@ pk_task_ready_cb (GObject *source_object, GAsyncResult *res, gpointer user_data)
 }
 
 /**
- * pk_task_install_packages_async:
+ * pk_task_install_packages_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
  * @cancellable: a #GCancellable or %NULL
@@ -1020,6 +1023,7 @@ pk_task_install_packages_async (PkTask *task, gchar **package_ids, GCancellable 
 				PkProgressCallback progress_callback, gpointer progress_user_data,
 				GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 	PkTaskClass *klass = PK_TASK_GET_CLASS (task);
@@ -1034,11 +1038,11 @@ pk_task_install_packages_async (PkTask *task, gchar **package_ids, GCancellable 
 	state->progress_callback = progress_callback;
 	state->progress_user_data = progress_user_data;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
-	if (task->priv->allow_reinstall) {
+	if (priv->allow_reinstall) {
 		pk_bitfield_add (state->transaction_flags,
 				 PK_TRANSACTION_FLAG_ENUM_ALLOW_REINSTALL);
 	}
-	if (task->priv->allow_downgrade) {
+	if (priv->allow_downgrade) {
 		pk_bitfield_add (state->transaction_flags,
 				 PK_TRANSACTION_FLAG_ENUM_ALLOW_DOWNGRADE);
 	}
@@ -1048,18 +1052,18 @@ pk_task_install_packages_async (PkTask *task, gchar **package_ids, GCancellable 
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* start trusted install async */
-	if (task->priv->simulate && klass->simulate_question != NULL)
+	if (priv->simulate && klass->simulate_question != NULL)
 		pk_task_do_async_simulate_action (g_steal_pointer (&gtask));
 	else
 		pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_update_packages_async:
+ * pk_task_update_packages_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
  * @cancellable: a #GCancellable or %NULL
@@ -1077,6 +1081,7 @@ pk_task_update_packages_async (PkTask *task, gchar **package_ids, GCancellable *
 			       PkProgressCallback progress_callback, gpointer progress_user_data,
 			       GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 	PkTaskClass *klass = PK_TASK_GET_CLASS (task);
@@ -1097,18 +1102,18 @@ pk_task_update_packages_async (PkTask *task, gchar **package_ids, GCancellable *
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* start trusted install async */
-	if (task->priv->simulate && klass->simulate_question != NULL)
+	if (priv->simulate && klass->simulate_question != NULL)
 		pk_task_do_async_simulate_action (g_steal_pointer (&gtask));
 	else
 		pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_upgrade_system_async:
+ * pk_task_upgrade_system_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @distro_id: a distro ID such as "fedora-14"
  * @upgrade_kind: a #PkUpgradeKindEnum such as %PK_UPGRADE_KIND_ENUM_COMPLETE
@@ -1134,6 +1139,7 @@ pk_task_upgrade_system_async (PkTask *task,
                               PkProgressCallback progress_callback, gpointer progress_user_data,
                               GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 	PkTaskClass *klass = PK_TASK_GET_CLASS (task);
@@ -1155,18 +1161,18 @@ pk_task_upgrade_system_async (PkTask *task,
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_upgrade_system_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* start trusted install async */
-	if (task->priv->simulate && klass->simulate_question != NULL)
+	if (priv->simulate && klass->simulate_question != NULL)
 		pk_task_do_async_simulate_action (g_steal_pointer (&gtask));
 	else
 		pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_remove_packages_async:
+ * pk_task_remove_packages_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
  * @allow_deps: if other dependent packages are allowed to be removed from the computer
@@ -1177,7 +1183,7 @@ pk_task_upgrade_system_async (PkTask *task,
  * @callback_ready: the function to run on completion
  * @user_data: the data to pass to @callback_ready
  *
- * Remove a package (optionally with dependancies) from the system.
+ * Remove a package (optionally with dependencies) from the system.
  * If @allow_deps is set to %FALSE, and other packages would have to be removed,
  * then the transaction would fail.
  *
@@ -1188,6 +1194,7 @@ pk_task_remove_packages_async (PkTask *task, gchar **package_ids, gboolean allow
 			       PkProgressCallback progress_callback, gpointer progress_user_data,
 			       GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 	PkTaskClass *klass = PK_TASK_GET_CLASS (task);
@@ -1209,18 +1216,18 @@ pk_task_remove_packages_async (PkTask *task, gchar **package_ids, gboolean allow
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* start trusted install async */
-	if (task->priv->simulate && klass->simulate_question != NULL)
+	if (priv->simulate && klass->simulate_question != NULL)
 		pk_task_do_async_simulate_action (g_steal_pointer (&gtask));
 	else
 		pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_install_files_async:
+ * pk_task_install_files_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @files: (array zero-terminated=1): a file such as "/home/hughsie/Desktop/hal-devel-0.10.0.rpm"
  * @cancellable: a #GCancellable or %NULL
@@ -1239,6 +1246,7 @@ pk_task_install_files_async (PkTask *task, gchar **files, GCancellable *cancella
 			     PkProgressCallback progress_callback, gpointer progress_user_data,
 			     GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 	PkTaskClass *klass = PK_TASK_GET_CLASS (task);
@@ -1250,7 +1258,7 @@ pk_task_install_files_async (PkTask *task, gchar **files, GCancellable *cancella
 	/* save state */
 	state = g_slice_new0 (PkTaskState);
 	state->role = PK_ROLE_ENUM_INSTALL_FILES;
-	if (task->priv->only_trusted)
+	if (priv->only_trusted)
 		state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	else
 		state->transaction_flags = 0;
@@ -1262,18 +1270,18 @@ pk_task_install_files_async (PkTask *task, gchar **files, GCancellable *cancella
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_install_files_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* start trusted install async */
-	if (task->priv->simulate && klass->simulate_question != NULL)
+	if (priv->simulate && klass->simulate_question != NULL)
 		pk_task_do_async_simulate_action (g_steal_pointer (&gtask));
 	else
 		pk_task_do_async_action (g_steal_pointer (&gtask));
 }
 
 /**
- * pk_task_resolve_async:
+ * pk_task_resolve_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @packages: (array zero-terminated=1): package names to find
@@ -1292,6 +1300,7 @@ pk_task_resolve_async (PkTask *task, PkBitfield filters, gchar **packages, GCanc
 		       PkProgressCallback progress_callback, gpointer progress_user_data,
 		       GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -1306,10 +1315,10 @@ pk_task_resolve_async (PkTask *task, PkBitfield filters, gchar **packages, GCanc
 	state->progress_user_data = progress_user_data;
 	state->transaction_flags = pk_bitfield_value (PK_TRANSACTION_FLAG_ENUM_ONLY_TRUSTED);
 	
-	if (task->priv->allow_downgrade)
+	if (priv->allow_downgrade)
 		pk_bitfield_add (state->transaction_flags,
 				PK_TRANSACTION_FLAG_ENUM_ALLOW_DOWNGRADE);
-	if (task->priv->allow_reinstall)
+	if (priv->allow_reinstall)
 		pk_bitfield_add (state->transaction_flags,
 				PK_TRANSACTION_FLAG_ENUM_ALLOW_REINSTALL);
 	state->filters = filters;
@@ -1319,7 +1328,7 @@ pk_task_resolve_async (PkTask *task, PkBitfield filters, gchar **packages, GCanc
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_resolve_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -1327,7 +1336,7 @@ pk_task_resolve_async (PkTask *task, PkBitfield filters, gchar **packages, GCanc
 }
 
 /**
- * pk_task_search_names_async:
+ * pk_task_search_names_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @values: (array zero-terminated=1): search values
@@ -1346,6 +1355,7 @@ pk_task_search_names_async (PkTask *task, PkBitfield filters, gchar **values, GC
 			    PkProgressCallback progress_callback, gpointer progress_user_data,
 			    GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -1366,7 +1376,7 @@ pk_task_search_names_async (PkTask *task, PkBitfield filters, gchar **values, GC
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_search_names_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -1374,7 +1384,7 @@ pk_task_search_names_async (PkTask *task, PkBitfield filters, gchar **values, GC
 }
 
 /**
- * pk_task_search_details_async:
+ * pk_task_search_details_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @values: (array zero-terminated=1): search values
@@ -1393,6 +1403,7 @@ pk_task_search_details_async (PkTask *task, PkBitfield filters, gchar **values, 
 			      PkProgressCallback progress_callback, gpointer progress_user_data,
 			      GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -1413,7 +1424,7 @@ pk_task_search_details_async (PkTask *task, PkBitfield filters, gchar **values, 
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_search_details_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -1421,7 +1432,7 @@ pk_task_search_details_async (PkTask *task, PkBitfield filters, gchar **values, 
 }
 
 /**
- * pk_task_search_groups_async:
+ * pk_task_search_groups_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @values: (array zero-terminated=1): search values
@@ -1440,6 +1451,7 @@ pk_task_search_groups_async (PkTask *task, PkBitfield filters, gchar **values, G
 			     PkProgressCallback progress_callback, gpointer progress_user_data,
 			     GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -1460,7 +1472,7 @@ pk_task_search_groups_async (PkTask *task, PkBitfield filters, gchar **values, G
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_search_groups_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -1468,7 +1480,7 @@ pk_task_search_groups_async (PkTask *task, PkBitfield filters, gchar **values, G
 }
 
 /**
- * pk_task_search_files_async:
+ * pk_task_search_files_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @values: (array zero-terminated=1): search values
@@ -1487,6 +1499,7 @@ pk_task_search_files_async (PkTask *task, PkBitfield filters, gchar **values, GC
 			    PkProgressCallback progress_callback, gpointer progress_user_data,
 			    GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -1507,7 +1520,7 @@ pk_task_search_files_async (PkTask *task, PkBitfield filters, gchar **values, GC
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_install_files_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -1515,7 +1528,7 @@ pk_task_search_files_async (PkTask *task, PkBitfield filters, gchar **values, GC
 }
 
 /**
- * pk_task_get_details_async:
+ * pk_task_get_details_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
  * @cancellable: a #GCancellable or %NULL
@@ -1533,6 +1546,7 @@ pk_task_get_details_async (PkTask *task, gchar **package_ids, GCancellable *canc
 			   PkProgressCallback progress_callback, gpointer progress_user_data,
 			   GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -1552,7 +1566,7 @@ pk_task_get_details_async (PkTask *task, gchar **package_ids, GCancellable *canc
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_get_details_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -1560,7 +1574,7 @@ pk_task_get_details_async (PkTask *task, gchar **package_ids, GCancellable *canc
 }
 
 /**
- * pk_task_get_update_detail_async:
+ * pk_task_get_update_detail_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
  * @cancellable: a #GCancellable or %NULL
@@ -1578,6 +1592,7 @@ pk_task_get_update_detail_async (PkTask *task, gchar **package_ids, GCancellable
 				 PkProgressCallback progress_callback, gpointer progress_user_data,
 				 GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -1597,7 +1612,7 @@ pk_task_get_update_detail_async (PkTask *task, gchar **package_ids, GCancellable
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_get_update_detail_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -1605,7 +1620,7 @@ pk_task_get_update_detail_async (PkTask *task, gchar **package_ids, GCancellable
 }
 
 /**
- * pk_task_download_packages_async:
+ * pk_task_download_packages_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
  * @directory: the destination directory
@@ -1624,6 +1639,7 @@ pk_task_download_packages_async (PkTask *task, gchar **package_ids, const gchar 
 				 PkProgressCallback progress_callback, gpointer progress_user_data,
 				 GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -1644,7 +1660,7 @@ pk_task_download_packages_async (PkTask *task, gchar **package_ids, const gchar 
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_download_packages_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -1652,7 +1668,7 @@ pk_task_download_packages_async (PkTask *task, gchar **package_ids, const gchar 
 }
 
 /**
- * pk_task_get_updates_async:
+ * pk_task_get_updates_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @cancellable: a #GCancellable or %NULL
@@ -1670,6 +1686,7 @@ pk_task_get_updates_async (PkTask *task, PkBitfield filters, GCancellable *cance
 			   PkProgressCallback progress_callback, gpointer progress_user_data,
 			   GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -1689,7 +1706,7 @@ pk_task_get_updates_async (PkTask *task, PkBitfield filters, GCancellable *cance
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_get_updates_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -1697,7 +1714,7 @@ pk_task_get_updates_async (PkTask *task, PkBitfield filters, GCancellable *cance
 }
 
 /**
- * pk_task_depends_on_async:
+ * pk_task_depends_on_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
@@ -1708,7 +1725,7 @@ pk_task_get_updates_async (PkTask *task, PkBitfield filters, GCancellable *cance
  * @callback_ready: the function to run on completion
  * @user_data: the data to pass to @callback
  *
- * Get the list of dependant packages.
+ * Get the list of dependent packages.
  *
  * Since: 0.6.5
  **/
@@ -1717,6 +1734,7 @@ pk_task_depends_on_async (PkTask *task, PkBitfield filters, gchar **package_ids,
 			   PkProgressCallback progress_callback, gpointer progress_user_data,
 			   GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -1738,7 +1756,7 @@ pk_task_depends_on_async (PkTask *task, PkBitfield filters, gchar **package_ids,
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_depends_on_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -1746,7 +1764,7 @@ pk_task_depends_on_async (PkTask *task, PkBitfield filters, gchar **package_ids,
 }
 
 /**
- * pk_task_get_packages_async:
+ * pk_task_get_packages_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @cancellable: a #GCancellable or %NULL
@@ -1764,6 +1782,7 @@ pk_task_get_packages_async (PkTask *task, PkBitfield filters, GCancellable *canc
 			    PkProgressCallback progress_callback, gpointer progress_user_data,
 			    GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -1783,7 +1802,7 @@ pk_task_get_packages_async (PkTask *task, PkBitfield filters, GCancellable *canc
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -1791,7 +1810,7 @@ pk_task_get_packages_async (PkTask *task, PkBitfield filters, GCancellable *canc
 }
 
 /**
- * pk_task_required_by_async:
+ * pk_task_required_by_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
@@ -1811,6 +1830,7 @@ pk_task_required_by_async (PkTask *task, PkBitfield filters, gchar **package_ids
 			    PkProgressCallback progress_callback, gpointer progress_user_data,
 			    GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -1832,7 +1852,7 @@ pk_task_required_by_async (PkTask *task, PkBitfield filters, gchar **package_ids
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -1840,7 +1860,7 @@ pk_task_required_by_async (PkTask *task, PkBitfield filters, gchar **package_ids
 }
 
 /**
- * pk_task_what_provides_async:
+ * pk_task_what_provides_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @values: (array zero-terminated=1): values to search for
@@ -1860,6 +1880,7 @@ pk_task_what_provides_async (PkTask *task, PkBitfield filters,
 			     PkProgressCallback progress_callback, gpointer progress_user_data,
 			     GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -1880,7 +1901,7 @@ pk_task_what_provides_async (PkTask *task, PkBitfield filters,
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -1888,7 +1909,7 @@ pk_task_what_provides_async (PkTask *task, PkBitfield filters,
 }
 
 /**
- * pk_task_get_files_async:
+ * pk_task_get_files_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @package_ids: (array zero-terminated=1): a null terminated array of package_id structures such as "hal;0.0.1;i386;fedora"
  * @cancellable: a #GCancellable or %NULL
@@ -1906,6 +1927,7 @@ pk_task_get_files_async (PkTask *task, gchar **package_ids, GCancellable *cancel
 			 PkProgressCallback progress_callback, gpointer progress_user_data,
 			 GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -1925,7 +1947,7 @@ pk_task_get_files_async (PkTask *task, gchar **package_ids, GCancellable *cancel
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -1933,7 +1955,7 @@ pk_task_get_files_async (PkTask *task, gchar **package_ids, GCancellable *cancel
 }
 
 /**
- * pk_task_get_categories_async:
+ * pk_task_get_categories_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @cancellable: a #GCancellable or %NULL
  * @progress_callback: (scope notified): the function to run when the progress changes
@@ -1950,6 +1972,7 @@ pk_task_get_categories_async (PkTask *task, GCancellable *cancellable,
 			      PkProgressCallback progress_callback, gpointer progress_user_data,
 			      GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -1968,7 +1991,7 @@ pk_task_get_categories_async (PkTask *task, GCancellable *cancellable,
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -1976,7 +1999,7 @@ pk_task_get_categories_async (PkTask *task, GCancellable *cancellable,
 }
 
 /**
- * pk_task_refresh_cache_async:
+ * pk_task_refresh_cache_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @force: if the metadata should be deleted and re-downloaded even if it is correct
  * @cancellable: a #GCancellable or %NULL
@@ -1994,6 +2017,7 @@ pk_task_refresh_cache_async (PkTask *task, gboolean force, GCancellable *cancell
 			     PkProgressCallback progress_callback, gpointer progress_user_data,
 			     GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -2013,7 +2037,7 @@ pk_task_refresh_cache_async (PkTask *task, gboolean force, GCancellable *cancell
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -2021,7 +2045,7 @@ pk_task_refresh_cache_async (PkTask *task, gboolean force, GCancellable *cancell
 }
 
 /**
- * pk_task_get_repo_list_async:
+ * pk_task_get_repo_list_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @filters: a bitfield of filters that can be used to limit the results
  * @cancellable: a #GCancellable or %NULL
@@ -2039,6 +2063,7 @@ pk_task_get_repo_list_async (PkTask *task, PkBitfield filters, GCancellable *can
 			     PkProgressCallback progress_callback, gpointer progress_user_data,
 			     GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -2058,7 +2083,7 @@ pk_task_get_repo_list_async (PkTask *task, PkBitfield filters, GCancellable *can
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -2066,7 +2091,7 @@ pk_task_get_repo_list_async (PkTask *task, PkBitfield filters, GCancellable *can
 }
 
 /**
- * pk_task_repo_enable_async:
+ * pk_task_repo_enable_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @repo_id: The software repository ID
  * @enabled: %TRUE or %FALSE
@@ -2085,6 +2110,7 @@ pk_task_repo_enable_async (PkTask *task, const gchar *repo_id, gboolean enabled,
 			   PkProgressCallback progress_callback, gpointer progress_user_data,
 			   GAsyncReadyCallback callback_ready, gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	g_autoptr(GTask) gtask = NULL;
 
@@ -2105,7 +2131,7 @@ pk_task_repo_enable_async (PkTask *task, const gchar *repo_id, gboolean enabled,
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_install_packages_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 	/* run task with callbacks */
@@ -2113,7 +2139,7 @@ pk_task_repo_enable_async (PkTask *task, const gchar *repo_id, gboolean enabled,
 }
 
 /**
- * pk_task_repair_system_async:
+ * pk_task_repair_system_async: (finish-func pk_task_generic_finish):
  * @task: a valid #PkTask instance
  * @cancellable: a #GCancellable or %NULL
  * @progress_callback: (scope notified): the function to run when the progress changes
@@ -2133,6 +2159,7 @@ pk_task_repair_system_async (PkTask *task,
 			     GAsyncReadyCallback callback_ready,
 			     gpointer user_data)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	PkTaskState *state;
 	PkTaskClass *klass = PK_TASK_GET_CLASS (task);
 	g_autoptr(GTask) gtask = NULL;
@@ -2152,12 +2179,12 @@ pk_task_repair_system_async (PkTask *task,
 	gtask = g_task_new (task, cancellable, callback_ready, user_data);
 	g_task_set_source_tag (gtask, pk_task_repair_system_async);
 	g_debug ("adding state %p", state);
-	g_hash_table_insert (task->priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
+	g_hash_table_insert (priv->gtasks, GUINT_TO_POINTER (state->request), g_object_ref (gtask));
 	g_task_set_task_data (gtask, g_steal_pointer (&state), pk_task_state_free);
 
 
 	/* start trusted repair system async */
-	if (task->priv->simulate && klass->simulate_question != NULL)
+	if (priv->simulate && klass->simulate_question != NULL)
 		pk_task_do_async_simulate_action (g_steal_pointer (&gtask));
 	else
 		pk_task_do_async_action (g_steal_pointer (&gtask));
@@ -2178,6 +2205,7 @@ pk_task_repair_system_async (PkTask *task,
 PkResults *
 pk_task_generic_finish (PkTask *task, GAsyncResult *res, GError **error)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 	GTask *gtask;
 	PkTaskState *state;
 
@@ -2189,7 +2217,7 @@ pk_task_generic_finish (PkTask *task, GAsyncResult *res, GError **error)
 	state = g_task_get_task_data (gtask);
 	/* remove from table */
 	g_debug ("remove state %p", state);
-	g_hash_table_remove (task->priv->gtasks, GUINT_TO_POINTER (state->request));
+	g_hash_table_remove (priv->gtasks, GUINT_TO_POINTER (state->request));
 
 	return g_task_propagate_pointer (gtask, error);
 }
@@ -2206,9 +2234,15 @@ pk_task_generic_finish (PkTask *task, GAsyncResult *res, GError **error)
 void
 pk_task_set_simulate (PkTask *task, gboolean simulate)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
+
 	g_return_if_fail (PK_IS_TASK (task));
-	task->priv->simulate = simulate;
-	g_object_notify (G_OBJECT (task), "simulate");
+
+	if (priv->simulate == simulate)
+		return;
+
+	priv->simulate = simulate;
+	g_object_notify_by_pspec (G_OBJECT(task), obj_properties[PROP_SIMULATE]);
 }
 
 /**
@@ -2224,8 +2258,11 @@ pk_task_set_simulate (PkTask *task, gboolean simulate)
 gboolean
 pk_task_get_simulate (PkTask *task)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
+
 	g_return_val_if_fail (PK_IS_TASK (task), FALSE);
-	return task->priv->simulate;
+
+	return priv->simulate;
 }
 
 /**
@@ -2241,9 +2278,15 @@ pk_task_get_simulate (PkTask *task)
 void
 pk_task_set_only_download (PkTask *task, gboolean only_download)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
+
 	g_return_if_fail (PK_IS_TASK (task));
-	task->priv->only_download = only_download;
-	g_object_notify (G_OBJECT (task), "only-download");
+
+	if (priv->only_download == only_download)
+		return;
+
+	priv->only_download = only_download;
+	g_object_notify_by_pspec (G_OBJECT(task), obj_properties[PROP_ONLY_DOWNLOAD]);
 }
 
 /**
@@ -2259,8 +2302,11 @@ pk_task_set_only_download (PkTask *task, gboolean only_download)
 gboolean
 pk_task_get_only_download (PkTask *task)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
+
 	g_return_val_if_fail (PK_IS_TASK (task), FALSE);
-	return task->priv->only_download;
+
+	return priv->only_download;
 }
 
 
@@ -2277,16 +2323,22 @@ pk_task_get_only_download (PkTask *task)
 void
 pk_task_set_only_trusted (PkTask *task, gboolean only_trusted)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
+
 	g_return_if_fail (PK_IS_TASK (task));
-	task->priv->only_trusted = only_trusted;
-	g_object_notify (G_OBJECT (task), "only-trusted");
+
+	if (priv->only_trusted == only_trusted)
+		return;
+
+	priv->only_trusted = only_trusted;
+	g_object_notify_by_pspec (G_OBJECT(task), obj_properties[PROP_ONLY_TRUSTED]);
 }
 
 /**
  * pk_task_get_only_trusted:
  * @task: a valid #PkTask instance
  *
- * Gets if we allow only authenticated packages in the transactoin.
+ * Gets if we allow only authenticated packages in the transaction.
  *
  * Return value: %TRUE if we allow only authenticated packages
  *
@@ -2295,8 +2347,11 @@ pk_task_set_only_trusted (PkTask *task, gboolean only_trusted)
 gboolean
 pk_task_get_only_trusted (PkTask *task)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
+
 	g_return_val_if_fail (PK_IS_TASK (task), FALSE);
-	return task->priv->only_trusted;
+
+	return priv->only_trusted;
 }
 
 /**
@@ -2311,9 +2366,15 @@ pk_task_get_only_trusted (PkTask *task)
 void
 pk_task_set_allow_downgrade (PkTask *task, gboolean allow_downgrade)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
+
 	g_return_if_fail (PK_IS_TASK (task));
-	task->priv->allow_downgrade = allow_downgrade;
-	g_object_notify (G_OBJECT (task), "allow-downgrade");
+
+	if (priv->allow_downgrade == allow_downgrade)
+		return;
+
+	priv->allow_downgrade = allow_downgrade;
+	g_object_notify_by_pspec (G_OBJECT(task), obj_properties[PROP_ALLOW_DOWNGRADE]);
 }
 
 /**
@@ -2329,8 +2390,11 @@ pk_task_set_allow_downgrade (PkTask *task, gboolean allow_downgrade)
 gboolean
 pk_task_get_allow_downgrade (PkTask *task)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
+
 	g_return_val_if_fail (PK_IS_TASK (task), FALSE);
-	return task->priv->allow_downgrade;
+
+	return priv->allow_downgrade;
 }
 
 /**
@@ -2345,9 +2409,15 @@ pk_task_get_allow_downgrade (PkTask *task)
 void
 pk_task_set_allow_reinstall (PkTask *task, gboolean allow_reinstall)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
+
 	g_return_if_fail (PK_IS_TASK (task));
-	task->priv->allow_reinstall = allow_reinstall;
-	g_object_notify (G_OBJECT (task), "allow-reinstall");
+
+	if (priv->allow_reinstall == allow_reinstall)
+		return;
+
+	priv->allow_reinstall = allow_reinstall;
+	g_object_notify_by_pspec (G_OBJECT (task), obj_properties[PROP_ALLOW_REINSTALL]);
 }
 
 /**
@@ -2363,8 +2433,11 @@ pk_task_set_allow_reinstall (PkTask *task, gboolean allow_reinstall)
 gboolean
 pk_task_get_allow_reinstall (PkTask *task)
 {
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
+
 	g_return_val_if_fail (PK_IS_TASK (task), FALSE);
-	return task->priv->allow_reinstall;
+
+	return priv->allow_reinstall;
 }
 
 /*
@@ -2374,13 +2447,13 @@ static void
 pk_task_get_property (GObject *object, guint prop_id, GValue *value, GParamSpec *pspec)
 {
 	PkTask *task = PK_TASK (object);
-	PkTaskPrivate *priv = task->priv;
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 
 	switch (prop_id) {
 	case PROP_SIMULATE:
 		g_value_set_boolean (value, priv->simulate);
 		break;
-	case PROP_ONLY_PREPARE:
+	case PROP_ONLY_DOWNLOAD:
 		g_value_set_boolean (value, priv->only_download);
 		break;
 	case PROP_ONLY_TRUSTED:
@@ -2405,13 +2478,13 @@ static void
 pk_task_set_property (GObject *object, guint prop_id, const GValue *value, GParamSpec *pspec)
 {
 	PkTask *task = PK_TASK (object);
-	PkTaskPrivate *priv = task->priv;
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
 
 	switch (prop_id) {
 	case PROP_SIMULATE:
 		priv->simulate = g_value_get_boolean (value);
 		break;
-	case PROP_ONLY_PREPARE:
+	case PROP_ONLY_DOWNLOAD:
 		priv->only_download = g_value_get_boolean (value);
 		break;
 	case PROP_ONLY_TRUSTED:
@@ -2435,7 +2508,6 @@ pk_task_set_property (GObject *object, guint prop_id, const GValue *value, GPara
 static void
 pk_task_class_init (PkTaskClass *klass)
 {
-	GParamSpec *pspec;
 	GObjectClass *object_class = G_OBJECT_CLASS (klass);
 	object_class->finalize = pk_task_finalize;
 	object_class->get_property = pk_task_get_property;
@@ -2448,10 +2520,10 @@ pk_task_class_init (PkTaskClass *klass)
          *
 	 * Since: 0.5.2
 	 */
-	pspec = g_param_spec_boolean ("simulate", NULL, NULL,
+	obj_properties[PROP_SIMULATE] =
+		g_param_spec_boolean ("simulate", NULL, NULL,
 				      TRUE,
 				      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
-	g_object_class_install_property (object_class, PROP_SIMULATE, pspec);
 
 	/**
 	 * PkTask:only-download:
@@ -2460,10 +2532,10 @@ pk_task_class_init (PkTaskClass *klass)
          *
 	 * Since: 0.8.1
 	 */
-	pspec = g_param_spec_boolean ("only-download", NULL, NULL,
+	obj_properties[PROP_ONLY_DOWNLOAD] =
+		g_param_spec_boolean ("only-download", NULL, NULL,
 				      FALSE,
 				      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
-	g_object_class_install_property (object_class, PROP_ONLY_PREPARE, pspec);
 
 	/**
 	 * PkTask:only-trusted:
@@ -2472,10 +2544,10 @@ pk_task_class_init (PkTaskClass *klass)
          *
 	 * Since: 0.9.5
 	 */
-	pspec = g_param_spec_boolean ("only-trusted", NULL, NULL,
+	obj_properties[PROP_ONLY_TRUSTED] =
+		g_param_spec_boolean ("only-trusted", NULL, NULL,
 				      TRUE,
 				      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
-	g_object_class_install_property (object_class, PROP_ONLY_TRUSTED, pspec);
 
 	/**
 	 * PkTask:allow-reinstall:
@@ -2484,10 +2556,10 @@ pk_task_class_init (PkTaskClass *klass)
          *
 	 * Since: 1.0.2
 	 */
-	pspec = g_param_spec_boolean ("allow-reinstall", NULL, NULL,
+	obj_properties[PROP_ALLOW_REINSTALL] =
+		g_param_spec_boolean ("allow-reinstall", NULL, NULL,
 				      FALSE,
 				      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
-	g_object_class_install_property (object_class, PROP_ALLOW_REINSTALL, pspec);
 
 	/**
 	 * PkTask:allow-downgrade:
@@ -2496,12 +2568,12 @@ pk_task_class_init (PkTaskClass *klass)
          *
 	 * Since: 1.0.2
 	 */
-	pspec = g_param_spec_boolean ("allow-downgrade", NULL, NULL,
+	obj_properties[PROP_ALLOW_DOWNGRADE] =
+		g_param_spec_boolean ("allow-downgrade", NULL, NULL,
 				      FALSE,
 				      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
-	g_object_class_install_property (object_class, PROP_ALLOW_DOWNGRADE, pspec);
 
-	g_type_class_add_private (klass, sizeof (PkTaskPrivate));
+	g_object_class_install_properties (object_class, PROP_LAST, obj_properties);
 }
 
 /*
@@ -2510,11 +2582,13 @@ pk_task_class_init (PkTaskClass *klass)
 static void
 pk_task_init (PkTask *task)
 {
-	task->priv = PK_TASK_GET_PRIVATE (task);
-	task->priv->gtasks = g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL, g_object_unref);
-	task->priv->simulate = TRUE;
-	task->priv->allow_reinstall = FALSE;
-	task->priv->allow_downgrade = FALSE;
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
+
+	task->priv = priv;
+	priv->gtasks = g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL, g_object_unref);
+	priv->simulate = TRUE;
+	priv->allow_reinstall = FALSE;
+	priv->allow_downgrade = FALSE;
 }
 
 /*
@@ -2524,7 +2598,10 @@ static void
 pk_task_finalize (GObject *object)
 {
 	PkTask *task = PK_TASK (object);
-	g_clear_pointer (&task->priv->gtasks, g_hash_table_unref);
+	PkTaskPrivate *priv = pk_task_get_instance_private (task);
+
+	g_clear_pointer (&priv->gtasks, g_hash_table_unref);
+
 	G_OBJECT_CLASS (pk_task_parent_class)->finalize (object);
 }
 
