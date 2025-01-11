@@ -142,8 +142,8 @@ backend_get_updates_thread (PkBackendJob *job, GVariant *params, gpointer user_d
 {
 	pk_backend_job_set_status (job, PK_STATUS_ENUM_QUERY);
 	pk_backend_job_set_percentage (job, 0);
-	Pkgsync Sync;
-	Sync.run();
+	cards::sync sync;
+	sync.run();
 	pk_backend_job_set_percentage (job, 100);
 	pk_backend_job_finished (job);
 }

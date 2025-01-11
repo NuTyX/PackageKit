@@ -80,7 +80,7 @@ void Job::resolvePackageIds(gchar **package_ids, PkBitfield filters)
 			break;
 		std::string pi = package_ids[i];
 		for (auto p: m_cache->getListOfPackagesNames()) {
-			cards::Cache* pkg = new cards::Cache;
+			cards::cache* pkg = new cards::cache;
 			std::string::size_type pos;
 			pos = convertToLowerCase(m_cache->getCollection(p)).find(convertToLowerCase(pi));
 			if (pos == std::string::npos)
