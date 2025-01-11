@@ -24,7 +24,7 @@ bool Job::init()
 {
 	m_cache = new pkgdbh;
 
-	if (m_cache->getListOfPackagesNames().size() > 0)
+	if (m_cache->getNumberOfPackages() > 0)
 		return true;
 
 	return false;
@@ -56,7 +56,7 @@ void Job::resolvePackages(PkBitfield filters)
 
 	pk_backend_job_set_status (m_job, PK_STATUS_ENUM_QUERY);
 
-	for (auto p: m_cache->getListOfPackagesNames()) {
+	for (auto p: m_cache->getSetOfPackagesNames()) {
 		cards::cache* pkg = new cards::cache;
 		pkg->name(p);
 		pkg->description(m_cache->getDescription(p));
@@ -79,7 +79,7 @@ void Job::resolvePackageIds(gchar **package_ids, PkBitfield filters)
 		if (m_cancel)
 			break;
 		std::string pi = package_ids[i];
-		for (auto p: m_cache->getListOfPackagesNames()) {
+		for (auto p: m_cache->getSetOfPackagesNames()) {
 			cards::cache* pkg = new cards::cache;
 			std::string::size_type pos;
 			pos = convertToLowerCase(m_cache->getCollection(p)).find(convertToLowerCase(pi));
