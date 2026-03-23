@@ -29,12 +29,12 @@
 using namespace std;
 
 typedef struct {
-    string   version;
-    string   type;
-    string   data;
-    string   opt;
-    void    *caps;
-    string   arch;
+    string version;
+    string type;
+    string data;
+    string opt;
+    void *caps;
+    bool native;
 } Match;
 
 class GstMatcher
@@ -43,7 +43,7 @@ public:
     GstMatcher(gchar **values);
     ~GstMatcher();
 
-    bool matches(string record, string arch);
+    bool matches(string record, bool arch);
     bool hasMatches() const;
 
 private:

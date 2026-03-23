@@ -37,7 +37,17 @@
 #else
 #define LOG_INFO STDERR_FILENO
 #define LOG_WARNING STDERR_FILENO
-#define sd_journal_print dprintf
+static int sd_journal_print (int fd, const char* format, ...)
+{
+	va_list ap;
+	int ret;
+
+	va_start(ap, format);
+	ret = vdprintf(fd, format, ap);
+	va_end(ap);
+	dprintf(fd, "\n");
+	return (ret);
+}
 #endif
 
 static void
@@ -198,11 +208,8 @@ pk_offline_update_reboot (void)
 
 	/* reboot using systemd */
 	sd_journal_print (LOG_INFO, "rebooting");
-#ifdef PLYMOUTH_0_9_5
 	pk_offline_update_set_plymouth_mode ("reboot");
-#else
-	pk_offline_update_set_plymouth_mode ("shutdown");
-#endif
+
 	/* TRANSLATORS: we've finished doing offline updates */
 	pk_offline_update_set_plymouth_msg (_("Rebooting after installing updates…"));
 	connection = g_bus_get_sync (G_BUS_TYPE_SYSTEM, NULL, &error);
@@ -425,11 +432,8 @@ pk_offline_update_do_upgrade (PkTask *task, PkProgressBar *progressbar, GError *
 	        return FALSE;
 	}
 
-#ifdef PLYMOUTH_0_9_5
 	pk_offline_update_set_plymouth_mode ("system-upgrade");
-#else
-	pk_offline_update_set_plymouth_mode ("updates");
-#endif
+
 	/* TRANSLATORS: we've started doing offline system upgrade */
 	pk_offline_update_set_plymouth_msg (_("Installing system upgrade; this could take a while..."));
 	pk_offline_update_write_dummy_results ();
@@ -507,8 +511,7 @@ main (int argc, char *argv[])
 
 	/* use a progress bar when the user presses <esc> in plymouth */
 	progressbar = pk_progress_bar_new ();
-	pk_progress_bar_set_size (progressbar, 25);
-	pk_progress_bar_set_padding (progressbar, 30);
+	pk_progress_bar_set_size (progressbar, 46);
 
 	task = pk_task_new ();
 	pk_client_set_interactive (PK_CLIENT (task), FALSE);

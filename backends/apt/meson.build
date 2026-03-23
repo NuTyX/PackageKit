@@ -1,4 +1,4 @@
-add_languages('cpp')
+add_languages('cpp', native: false)
 
 cpp_compiler = meson.get_compiler('cpp')
 
@@ -29,9 +29,9 @@ c_args = ['-DG_LOG_DOMAIN="PackageKit-APT"',
           '-DDATADIR="@0@"'.format(join_paths(get_option('prefix'), get_option('datadir'))),
 ]
 
-packagekit_backend_apt_module = shared_library(
-  'pk_backend_apt',
-  'pk-backend-apt.cpp',
+# Required to be used by the test suite
+packagekit_backend_apt_lib = static_library(
+  'pk_backend_apt_lib',
   'acqpkitstatus.cpp',
   'acqpkitstatus.h',
   'apt-cache-file.cpp',
@@ -44,6 +44,8 @@ packagekit_backend_apt_module = shared_library(
   'apt-sourceslist.h',
   'apt-utils.cpp',
   'apt-utils.h',
+  'deb822.cpp',
+  'deb822.h',
   'deb-file.cpp',
   'deb-file.h',
   'gst-matcher.cpp',
@@ -53,7 +55,6 @@ packagekit_backend_apt_module = shared_library(
   include_directories: packagekit_src_include,
   dependencies: [
     packagekit_glib2_dep,
-    gmodule_dep,
     apt_pkg_dep,
     appstream_dep,
     gstreamer_dep,
@@ -67,6 +68,37 @@ packagekit_backend_apt_module = shared_library(
   ],
   link_args: [
     '-lutil',
+  ],
+  override_options: [
+    'b_lundef=false',
+    'c_std=gnu17',
+    'cpp_std=c++20'
+  ],
+)
+
+packagekit_backend_apt_dep = declare_dependency(
+    link_whole: packagekit_backend_apt_lib,
+    include_directories: [
+        packagekit_src_include,
+        include_directories('.'),
+    ],
+    dependencies: [
+        packagekit_glib2_dep,
+    ],
+)
+
+packagekit_backend_apt_module = shared_module(
+  'pk_backend_apt',
+  'pk-backend-apt.cpp',
+  include_directories: packagekit_src_include,
+  dependencies: [
+    packagekit_glib2_dep,
+    packagekit_backend_apt_dep,
+  ],
+  c_args: c_args,
+  cpp_args: [
+    c_args,
+    ddtp_flag,
   ],
   override_options: [
     'b_lundef=false',

@@ -1,24 +1,31 @@
 project('PackageKit', 'c',
-  version : '1.3.1',
+  meson_version : '>=1.0',
+  default_options : ['warning_level=2', 'c_std=gnu17'],
+
   license : 'LGPL-2.1+',
-  meson_version : '>=0.50',
-  default_options : ['warning_level=2', 'c_std=c99'],
+  version : '1.3.5',
 )
 
 gnome = import('gnome')
 i18n = import('i18n')
 pkg = import('pkgconfig')
 
-glib_dep = dependency('glib-2.0', version: '>=2.62')
-gobject_dep = dependency('gobject-2.0')
-gio_dep = dependency('gio-2.0')
-gio_unix_dep = dependency('gio-unix-2.0', version: '>=2.16.1')
-gmodule_dep = dependency('gmodule-2.0', version: '>=2.16.1')
+source_root = meson.project_source_root()
+
+glib_req_version = '2.76'
+glib_req = '>= @0@'.format(glib_req_version)
+glib_major = glib_req_version.split('.')[0].to_int()
+glib_minor = glib_req_version.split('.')[1].to_int()
+
+glib_dep = dependency('glib-2.0', version: glib_req)
+gobject_dep = dependency('gobject-2.0', version: glib_req)
+gio_dep = dependency('gio-2.0', version: glib_req)
+gio_unix_dep = dependency('gio-unix-2.0', version: glib_req)
+gmodule_dep = dependency('gmodule-2.0', version: glib_req)
 sqlite3_dep = dependency('sqlite3')
-polkit_dep = dependency('polkit-gobject-1', version: '>=0.98')
-if polkit_dep.version().version_compare('>=0.114')
-  add_project_arguments ('-DHAVE_POLKIT_0_114=1', language: 'c')
-endif
+polkit_dep = dependency('polkit-gobject-1', version: '>=0.114')
+jansson_dep = dependency('jansson', version: '>=2.8', required: true)
+ply_client_dep = dependency('ply-boot-client', version: '>=0.9.5', required: false)
 
 libsystemd = []
 if get_option('systemd')
@@ -29,10 +36,10 @@ if get_option('systemd')
     systemd = dependency('systemd')
   endif
   if systemd_system_unit_dir == ''
-    systemd_system_unit_dir = systemd.get_pkgconfig_variable('systemdsystemunitdir')
+    systemd_system_unit_dir = systemd.get_variable(pkgconfig: 'systemdsystemunitdir')
   endif
   if systemd_user_unit_dir == ''
-    systemd_user_unit_dir = systemd.get_pkgconfig_variable('systemduserunitdir')
+    systemd_user_unit_dir = systemd.get_variable(pkgconfig: 'systemduserunitdir')
   endif
 
   add_project_arguments ('-DHAVE_SYSTEMD_SD_DAEMON_H=1', language: 'c')
@@ -55,15 +62,18 @@ if get_option('daemon_tests')
   add_project_arguments ('-DPK_ENABLE_DAEMON_TESTS=1', language: 'c')
 endif
 
-if dependency('ply-boot-client', version: '>=0.9.5', required: false).found()
-  add_project_arguments ('-DPLYMOUTH_0_9_5=1', language: 'c')
-endif
+# ensure we get newer POSIX stuff like realpath(3), wcwidth, etc. are available
+feature_args = [
+    '-D_DEFAULT_SOURCE',
+    '-D_XOPEN_SOURCE=700',
+    '-D_POSIX_C_SOURCE=200809L',
+]
 
-# Ensure functions like realpath(3) and other "default" functions are available
-add_project_arguments ('-D_DEFAULT_SOURCE', language: 'c')
+# set our minimum GLib version
+feature_args += '-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_@0@_@1@'.format(glib_major, glib_minor)
 
-# Avoid g_simple_async_result deprecation warnings in glib 2.46+
-add_project_arguments ('-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_44', language: 'c')
+# project arguments
+add_project_arguments (feature_args, language: 'c')
 
 # allow the daemon to include library files directly
 add_project_arguments ('-DPK_COMPILATION', language: ['c', 'cpp'])
@@ -77,13 +87,13 @@ conf.set_quoted('PROJECT_NAME', meson.project_name())
 conf.set_quoted('PROJECT_VERSION', meson.project_version())
 
 cc = meson.get_compiler('c')
-if cc.has_function('setpriority')
+if cc.has_function('setpriority', args: feature_args)
   conf.set('HAVE_SETPRIORITY', '1')
 endif
-if cc.has_function('clearenv')
+if cc.has_header_symbol('stdlib.h', 'clearenv', args: feature_args)
   conf.set('HAVE_CLEARENV', '1')
 endif
-if cc.has_header('unistd.h')
+if cc.has_header('unistd.h', args: feature_args)
   conf.set('HAVE_UNISTD_H', '1')
 endif
 
@@ -99,57 +109,93 @@ config_dep = declare_dependency(
 
 pk_db_dir = join_paths(get_option('localstatedir'), 'lib', 'PackageKit')
 local_state_dir = get_option('localstatedir')
-test_data_dir = join_paths(meson.source_root(), 'tests', 'data')
+test_data_dir = join_paths(source_root, 'tests', 'data')
 package_data_dir = get_option('datadir')
 package_locale_dir = join_paths(get_option('prefix'), get_option('datadir'), 'locale')
 pk_plugin_dir = join_paths(get_option('prefix'), get_option('libdir'), 'packagekit-backend')
 
+# enable strict checks and make warnings errors in maintainer mode
+if get_option('maintainer')
+  add_project_arguments(
+    cc.get_supported_arguments([
+            '-Werror',
+            '-Wall',
+            '-Wextra',
+            '-Wcast-align',
+            '-Wno-uninitialized',
+            '-Wempty-body',
+            '-Winit-self',
+            '-Wnull-dereference',
+            '-Wfloat-equal',
+            '-Winline',
+            '-Wno-error=comment',
+        ], checked: 'warn'),
+        language: ['c', 'cpp']
+    )
+endif
+
 # default compiler flags for C and C++
+# if a common compiler flag is not supported by C, then it likely
+# isn't by C++ either. So, we don't need a double check here.
 add_project_arguments(
-  '-Wall',
-  '-Wcast-align',
-  '-Wno-uninitialized',
-  '-Werror=missing-declarations',
-  '-Wredundant-decls',
-  '-Wpointer-arith',
-  '-Wcast-align',
-  '-Wwrite-strings',
-  '-Winit-self',
-  '-Wreturn-type',
-  '-Wformat-nonliteral',
-  '-Wformat-security',
-  '-Wmissing-include-dirs',
-  '-Wmissing-format-attribute',
-  '-Wclobbered',
-  '-Wempty-body',
-  '-Wignored-qualifiers',
-  '-Wsign-compare',
-  '-Wtype-limits',
-  '-Wuninitialized',
-  '-Wno-unused-parameter',
-  language: ['c', 'cpp']
+    cc.get_supported_arguments([
+        '-Werror=missing-include-dirs',
+        '-Wno-strict-aliasing',
+        '-Winline',
+        '-Wno-unused-parameter',
+        '-Wno-error=unused-parameter',
+    ]),
+    language: ['c', 'cpp']
 )
 
-# default compiler flags for C only
+# default compiler warning/error flags for C only
 add_project_arguments(
-  '-Werror=shadow',
-  '-Werror=empty-body',
-  '-Werror=strict-prototypes',
-  '-Werror=missing-prototypes',
-  '-Werror=implicit-function-declaration',
-  '-Werror=return-type',
-  '-Werror=int-conversion',
-  '-Werror=incompatible-pointer-types',
-  '-Werror=misleading-indentation',
-  '-Werror=missing-include-dirs',
-  '-Werror=declaration-after-statement',
-  '-Werror=format-security',
-  '-Waggregate-return',
-  '-Wno-strict-aliasing',
-  '-Winline',
-  '-Wmissing-parameter-type',
-  '-Woverride-init',
+  cc.get_supported_arguments([
+    '-Wcast-align',
+    '-Wno-uninitialized',
+    '-Werror=missing-declarations',
+    '-Wredundant-decls',
+    '-Wpointer-arith',
+    '-Wcast-align',
+    '-Wwrite-strings',
+    '-Winit-self',
+    '-Wreturn-type',
+    '-Wformat-nonliteral',
+    '-Wformat-security',
+    '-Wmissing-include-dirs',
+    '-Wmissing-format-attribute',
+    '-Wclobbered',
+    '-Wempty-body',
+    '-Wignored-qualifiers',
+    '-Wsign-compare',
+    '-Wtype-limits',
+    '-Wuninitialized',
+    '-Wmissing-parameter-type',
+    '-Woverride-init',
+    '-Wno-unused-parameter',
+    '-Wno-error=unused-parameter',
+    '-Werror=misleading-indentation',
+    '-Werror=return-type',
+    '-Werror=format-security',
+    '-Wformat',
+    '-Werror=shadow',
+    '-Werror=missing-declarations',
+    '-Werror=pointer-arith',
+    '-Werror=strict-prototypes',
+    '-Werror=missing-prototypes',
+    '-Werror=implicit-function-declaration',
+    '-Werror=int-conversion',
+    '-Werror=incompatible-pointer-types',
+    '-Werror=declaration-after-statement',
+    '-Werror=empty-body',
+  ]),
   language: 'c'
+)
+
+# default warning flags for C++ only
+add_project_arguments(
+  '-Werror=init-self',
+  language: 'cpp'
 )
 
 subdir('po')

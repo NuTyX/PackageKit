@@ -6,16 +6,23 @@ if [ -d "build" ]; then
 fi
 set -x
 
-meson build \
+meson setup build \
+    -Dmaintainer=true \
     -Dlocal_checkout=true \
+    -Dlegacy_tools=true \
     -Ddaemon_tests=true \
     $@
 
+DUMMY_DESTDIR=/tmp/install-root/
+rm -rf $DUMMY_DESTDIR
+
 # Build & Install
 ninja -C build
-DESTDIR=/tmp/install_root/ ninja -C build install
+DESTDIR=$DUMMY_DESTDIR ninja -C build install
 
 # Run tests
 mkdir -p /run/dbus/
 dbus-daemon --system --print-address
-meson test -C build -v --print-errorlogs
+meson test -C build \
+    -v \
+    --print-errorlogs

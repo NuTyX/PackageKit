@@ -539,7 +539,7 @@ pk_backend_get_details_local (PkBackend *backend, PkBackendJob *job, gchar **fil
 
         PackageView pkgView(pkg);
         PkGroupEnum group = PortsCategoriesToPKGroup(pkgView.categories());
-        pk_backend_job_details_full (job, pkgView.packageKitId(),
+        pk_backend_job_details (job, pkgView.packageKitId(),
                                 pkgView.comment(),
                                 pkgView.license(),
                                 group,
@@ -576,7 +576,7 @@ pk_backend_get_details (PkBackend *backend, PkBackendJob *job, gchar **package_i
         if (pkgdb_it_next (it, &pkg, PKG_LOAD_BASIC | PKG_LOAD_CATEGORIES | PKG_LOAD_LICENSES) == EPKG_OK) {
             PackageView pkgView(pkg);
             PkGroupEnum group = PortsCategoriesToPKGroup(pkgView.categories());
-            pk_backend_job_details_full (job, package_ids[i],
+            pk_backend_job_details (job, package_ids[i],
                                     pkgView.comment(),
                                     pkgView.license(),
                                     group,
@@ -736,11 +736,6 @@ pk_backend_get_updates (PkBackend *backend, PkBackendJob *job, PkBitfield filter
     // No need for PKJobFinisher here as we are using pk_backend_job_thread_create
     pk_backend_job_set_status (job, PK_STATUS_ENUM_QUERY);
 
-    if (!pk_backend_is_online (reinterpret_cast<PkBackend*>(pk_backend_job_get_backend (job)))) {
-        pk_backend_job_error_code (job, PK_ERROR_ENUM_NO_NETWORK, "Cannot check for updates when offline");
-        return;
-    }
-
     // GOS-397: what filters could we possibly get there?
     if (! (filters == 0
         || filters == pk_bitfield_value(PK_FILTER_ENUM_UNKNOWN)
@@ -758,6 +753,11 @@ pk_backend_install_update_packages_thread (PkBackendJob *job, GVariant *params, 
     bool installRole = pk_backend_job_get_role (job) == PK_ROLE_ENUM_INSTALL_PACKAGES;
 
     PKJobCanceller jc (job);
+
+    if (!pk_backend_is_online (reinterpret_cast<PkBackend*>(pk_backend_job_get_backend (job)))) {
+        pk_backend_job_error_code (job, PK_ERROR_ENUM_NO_NETWORK, "Cannot update packages when offline");
+        return;
+    }
 
     PkBitfield transaction_flags;
     gchar **package_ids = NULL;
@@ -859,7 +859,7 @@ pk_backend_install_update_packages_thread (PkBackendJob *job, GVariant *params, 
     names.reserve (size);
     for (guint i = 0; i < size; i++) {
         PackageView pkg(package_ids[i]);
-        names.push_back(g_strdup(pkg.nameversion()));
+        names.push_back(installRole ? g_strdup(pkg.nameversion()) : g_strdup(pkg.name()));
     }
 
     jobs.add (MATCH_EXACT, names);
@@ -943,6 +943,30 @@ pk_backend_refresh_cache_thread (PkBackendJob *job, GVariant *params, gpointer u
 
     PackageDatabase pkgDb(job, PKGDB_LOCK_EXCLUSIVE);
 
+    int ret = pkgdb_access(PKGDB_MODE_WRITE|PKGDB_MODE_CREATE,
+                PKGDB_DB_REPO);
+    switch (ret) {
+        case EPKG_OK:
+            break;
+        case EPKG_ENOACCESS:
+            pk_backend_job_error_code (job, PK_ERROR_ENUM_CANNOT_WRITE_REPO_CONFIG,
+                "The package DB directory isn't writable");
+            return;
+        case EPKG_INSECURE:
+            pk_backend_job_error_code (job, PK_ERROR_ENUM_REPO_CONFIGURATION_ERROR,
+                "The package DB directory is writable by non-root users");
+            return;
+        default:
+            pk_backend_job_error_code (job, PK_ERROR_ENUM_REPO_CONFIGURATION_ERROR,
+                "General libpkg failure");
+            return;
+    }
+
+    if (pkg_repos_activated_count() == 0) {
+        g_warning("No active remote repositories configured");
+        return;
+    }
+
     pkgDb.setEventHandler([job, &jc](pkg_event* ev) {
         if (jc.cancelIfRequested())
             return true;
@@ -970,31 +994,7 @@ pk_backend_refresh_cache_thread (PkBackendJob *job, GVariant *params, gpointer u
         return jc.cancelIfRequested();
     });
 
-    int ret = pkgdb_access(PKGDB_MODE_WRITE|PKGDB_MODE_CREATE,
-                PKGDB_DB_REPO);
-    switch (ret) {
-        case EPKG_OK:
-            break;
-        case EPKG_ENOACCESS:
-            pk_backend_job_error_code (job, PK_ERROR_ENUM_CANNOT_WRITE_REPO_CONFIG,
-                "The package DB directory isn't writable");
-            return;
-        case EPKG_INSECURE:
-            pk_backend_job_error_code (job, PK_ERROR_ENUM_REPO_CONFIGURATION_ERROR,
-                "The package DB directory is writable by non-root users");
-            return;
-        default:
-            pk_backend_job_error_code (job, PK_ERROR_ENUM_REPO_CONFIGURATION_ERROR,
-                "General libpkg failure");
-            return;
-    }
-
     pk_backend_job_set_percentage (job, 0);
-
-    if (pkg_repos_activated_count() == 0) {
-        g_warning("No active remote repositories configured");
-        return;
-    }
 
     struct pkg_repo *r = NULL;
     while (pkg_repos(&r) == EPKG_OK) {
@@ -1011,12 +1011,6 @@ pk_backend_refresh_cache_thread (PkBackendJob *job, GVariant *params, gpointer u
 void
 pk_backend_refresh_cache (PkBackend *backend, PkBackendJob *job, gboolean force)
 {
-    // No need for PKJobFinisher here as we are using pk_backend_job_thread_create
-    if (!pk_backend_is_online (backend)) {
-        pk_backend_job_error_code (job, PK_ERROR_ENUM_NO_NETWORK, "Cannot check when offline");
-        return;
-    }
-
     pk_backend_job_thread_create (job, pk_backend_refresh_cache_thread, NULL, NULL);
 }
 
@@ -1239,11 +1233,6 @@ pk_backend_search_names (PkBackend *backend, PkBackendJob *job, PkBitfield filte
 void
 pk_backend_update_packages (PkBackend *backend, PkBackendJob *job, PkBitfield transaction_flags, gchar **package_ids)
 {
-    if (!pk_backend_is_online (reinterpret_cast<PkBackend*>(pk_backend_job_get_backend (job)))) {
-        pk_backend_job_error_code (job, PK_ERROR_ENUM_NO_NETWORK, "Cannot update packages when offline");
-        return;
-    }
-
     pk_backend_job_thread_create (job, pk_backend_install_update_packages_thread, NULL, NULL);
 }
 

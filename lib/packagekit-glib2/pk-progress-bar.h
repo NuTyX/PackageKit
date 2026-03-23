@@ -54,13 +54,14 @@ GType		 pk_progress_bar_get_type		(void);
 PkProgressBar	*pk_progress_bar_new			(void);
 gboolean	 pk_progress_bar_set_size		(PkProgressBar	*progress_bar,
 							 guint		 size);
-gboolean	 pk_progress_bar_set_padding		(PkProgressBar	*progress_bar,
-							 guint		 padding);
 gboolean	 pk_progress_bar_set_percentage		(PkProgressBar	*progress_bar,
 							 gint		 percentage);
 gboolean	 pk_progress_bar_start			(PkProgressBar	*progress_bar,
 							 const gchar	*text);
 gboolean	 pk_progress_bar_end			(PkProgressBar	*progress_bar);
+
+void		 pk_progress_bar_set_allow_restart	(PkProgressBar	*progress_bar,
+												 gboolean	 allow_restart);
 
 G_END_DECLS
 

@@ -68,6 +68,7 @@
 #include <zypp/Resolvable.h>
 #include <zypp/SrcPackage.h>
 #include <zypp/TmpPath.h>
+#include <zypp/UserData.h>
 #include <zypp/ZYpp.h>
 #include <zypp/ZYppCallbacks.h>
 #include <zypp/ZYppFactory.h>
@@ -159,6 +160,8 @@ gchar * _repoName;
 guint _dl_count = 0;
 guint _dl_progress = 0;
 guint _dl_status = 0;
+
+gint _preload_progress = 0;
 
 /**
  * Build a package_id from the specified resolvable.  The returned
@@ -505,6 +508,59 @@ struct DigestReportReceiver : public zypp::callback::ReceiveReport<zypp::DigestR
 	}
 };
 
+struct CommitPreloadReportReceiver : public zypp::callback::ReceiveReport<zypp::media::CommitPreloadReport>, ZyppBackendReceiver
+{
+	virtual void start(const zypp::callback::UserData &userData = zypp::callback::UserData())
+	{
+		MIL << "[CommitPreload] Started preloading files..." << endl;
+
+		_preload_progress = 0;
+		pk_backend_job_set_status (_job, PK_STATUS_ENUM_DOWNLOAD);
+	}
+
+	virtual bool progress(int value, const zypp::callback::UserData &userData = zypp::callback::UserData())
+	{
+		// Only update the progress if it's a different value
+		if (_preload_progress != value) {
+			MIL << "[CommitPreload] Progress: " << value << "%" << endl;
+
+			_preload_progress = value;
+			pk_backend_job_set_percentage (_job, value);
+		}
+
+		return true;
+	}
+
+	virtual void fileStart (const Pathname &localfile, const zypp::callback::UserData &userData = zypp::callback::UserData())
+	{
+		MIL << "[CommitPreload] Starting: " << localfile.asString() << endl;
+	}
+
+	virtual void fileDone (const Pathname &localfile, Error error, const zypp::callback::UserData &userData = zypp::callback::UserData())
+	{
+		if (error == NO_ERROR)
+			MIL << "[CommitPreload] Finished: " << localfile.asString() << endl;
+		else {
+			MIL << "[CommitPreload] Error on: " << localfile.asString() << " (" << error << ")" << endl;
+			if (userData.haskey("description"))
+				MIL << "  Reason: " << userData.get<std::string>("description") << endl;
+		}
+	}
+
+	virtual void finish(Result res, const zypp::callback::UserData &userData = zypp::callback::UserData())
+	{
+		if (res == SUCCESS) {
+			MIL << "[CommitPreload] All files fetched successfully." << endl;
+		}
+		else {
+			MIL << "[CommitPreload] Some files are missing!" << endl;
+		}
+
+		_preload_progress = 100;
+		pk_backend_job_set_percentage (_job, 100);
+	}
+};
+
 class EventDirector
 {
  private:
@@ -517,6 +573,7 @@ class EventDirector
 		ZyppBackend::DigestReportReceiver _digestReport;
                 ZyppBackend::MediaChangeReportReceiver _mediaChangeReport;
                 ZyppBackend::ProgressReportReceiver _progressReport;
+		ZyppBackend::CommitPreloadReportReceiver _commitPreloadReport;
 
 	public:
 		EventDirector ()
@@ -530,6 +587,7 @@ class EventDirector
 			_digestReport.connect ();
                         _mediaChangeReport.connect ();
                         _progressReport.connect ();
+			_commitPreloadReport.connect ();
 		}
 
 		void setJob(PkBackendJob *job)
@@ -543,6 +601,7 @@ class EventDirector
 			_digestReport._job = job;
                         _mediaChangeReport._job = job;
                         _progressReport._job = job;
+			_commitPreloadReport._job = job;
 		}
 
 		~EventDirector ()
@@ -556,6 +615,7 @@ class EventDirector
 			_digestReport.disconnect ();
                         _mediaChangeReport.disconnect ();
                         _progressReport.disconnect ();
+			_commitPreloadReport.disconnect ();
 		}
 };
 
@@ -2168,7 +2228,7 @@ backend_get_details_thread (PkBackendJob *job, GVariant *params, gpointer user_d
 		MIL << package_ids[i] << endl;
 
 		if (zypp_package_is_local(package_ids[i])) {
-			pk_backend_job_details (job, package_ids[i], "", "", PK_GROUP_ENUM_UNKNOWN, "", "", (gulong)0);
+			pk_backend_job_details (job, package_ids[i], "", "", PK_GROUP_ENUM_UNKNOWN, "", "", (gulong)0, (gulong)0);
 			return;
 		}
 
@@ -2192,15 +2252,16 @@ backend_get_details_thread (PkBackendJob *job, GVariant *params, gpointer user_d
 			Package::constPtr pkg = make<Package>( solv );	// or NULL if not a Package
 			Patch::constPtr patch = make<Patch>( solv );	// or NULL if not a Patch
 
-			ByteCount size;
+			ByteCount size, download_size;
 			if ( patch ) {
 				Patch::Contents contents( patch->contents() );
 				for_( it, contents.begin(), contents.end() ) {
-					size += make<ResObject>(*it)->downloadSize();
+					download_size += make<ResObject>(*it)->downloadSize();
 				}
 			}
 			else {
-				size = obj->isSystem() ? obj->installSize() : obj->downloadSize();
+				size = obj->installSize();
+				download_size = obj->downloadSize();
 			}
 
 			pk_backend_job_details (job,
@@ -2210,7 +2271,8 @@ backend_get_details_thread (PkBackendJob *job, GVariant *params, gpointer user_d
 				get_enum_group(pkg ? pkg->group() : ""),// PkGroupEnum
 				obj->description().c_str(),		// description is common attibute
 				(pkg ? pkg->url().c_str() : "" ),	// url is Package attribute
-				(gulong)size);
+				(gulong)size,
+				(gulong)download_size);
 		} catch (const Exception &ex) {
 			zypp_backend_finished_error (
 				job, PK_ERROR_ENUM_INTERNAL_ERROR, "%s", ex.asUserString ().c_str ());
@@ -2269,7 +2331,8 @@ backend_get_details_local_thread (PkBackendJob *job, GVariant *params, gpointer 
 			get_enum_group (rpmHeader->tag_group ()),
 			rpmHeader->tag_description ().c_str (),
 			rpmHeader->tag_url ().c_str (),
-			(gulong)rpmHeader->tag_size ().blocks (zypp::ByteCount::B));
+			(gulong)rpmHeader->tag_size ().blocks (zypp::ByteCount::B),	// Installed size
+			(gulong)0);							// Download size should be local file size
 
 		g_free (package_id);
 	}
@@ -3112,7 +3175,7 @@ backend_find_packages_thread (PkBackendJob *job, GVariant *params, gpointer user
 		&_filters,
 		&values);
 
-	if (values == NULL && values[0] == NULL) {
+	if (values == NULL || values[0] == NULL) {
 		pk_backend_job_error_code (job, PK_ERROR_ENUM_PACKAGE_ID_INVALID,
 					   "Empty search string is not supported.");
 		return;
@@ -3574,7 +3637,7 @@ pk_backend_upgrade_system_thread (PkBackendJob *job,
 
 	if (is_tumbleweed ()) {
 		pk_backend_job_error_code (job, PK_ERROR_ENUM_NOT_SUPPORTED,
-					   "upgrade-system is not supported in Tumbleweed, use \"pkcon update\" instead.");
+					   "upgrade-system is not supported in Tumbleweed, use \"pkgcli update\" instead.");
 		return;
 	}
 

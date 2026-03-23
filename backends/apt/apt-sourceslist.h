@@ -2,6 +2,7 @@
  *
  * Copyright (c) 1999 Patrick Cole <z@amused.net>
  *           (c) 2002 Synaptic development team
+ *           (c) 2018-2025 Matthias Klumpp <matthias@tenstral.net>
  *
  * Author: Patrick Cole <z@amused.net>
  *         Michael Vogt <mvo@debian.org>
@@ -26,48 +27,59 @@
 #ifndef APT_SOURCESLIST_H
 #define APT_SOURCESLIST_H
 
+#include <apt-pkg/fileutl.h>
+#include <apt-pkg/tagfile.h>
+#include <apt-pkg/metaindex.h>
+
 #include <string>
 #include <list>
 
 using namespace std;
 
-class SourcesList {
+class SourcesList
+{
 public:
     enum RecType {
         Deb = 1 << 0,
         DebSrc = 1 << 1,
-        Rpm = 1 << 2,
-        RpmSrc = 1 << 3,
-        Disabled = 1 << 4,
-        Comment = 1 << 5,
-        RpmDir = 1 << 6,
-        RpmSrcDir = 1 << 7,
-        Repomd = 1 << 8,
-        RepomdSrc = 1 << 9
+        Disabled = 1 << 2,
+        Comment = 1 << 3,
     };
 
     struct SourceRecord {
         unsigned int Type;
         string VendorID;
-        string URI;
+        string PrimaryURI;
+        std::vector<std::string> URIs;
         string Dist;
         string *Sections;
         unsigned short NumSections;
-        string joinedSections();
+        string Comment;
+
+        string SourceFile;
+        uint Deb822StanzaIdx;
+
+        string joinedSections(const std::string &separator = " ") const;
         string niceName();
         string repoId();
-        bool hasSection(const char *component);
-        string Comment;
-        string SourceFile;
+        bool hasSection(const char *component) const;
 
         bool SetType(string);
-        string GetType();
+        string GetType() const;
         bool SetURI(string);
+        bool SetURIs(const std::vector<std::string> &newURIs);
 
-        SourceRecord():Type(0), Sections(0), NumSections(0) {}
-        ~SourceRecord() {
+        SourceRecord()
+            : Type(0),
+              Sections(0),
+              NumSections(0),
+              Deb822StanzaIdx(0)
+        {
+        }
+        ~SourceRecord()
+        {
             if (Sections) {
-                delete [] Sections;
+                delete[] Sections;
             }
         }
         SourceRecord &operator=(const SourceRecord &);
@@ -83,26 +95,33 @@ public:
     list<VendorRecord *> VendorRecords;
 
 private:
-    SourceRecord *AddSourceNode(SourceRecord &);
+    SourceRecord *AddSourceNode(const SourceRecord &);
     VendorRecord *AddVendorNode(VendorRecord &);
+    static bool OpenConfigurationFileFd(std::string const &File, FileFd &Fd);
+    bool ParseDeb822Stanza(const char *Type, pkgTagSection &Tags, unsigned int const stanzaIdx, FileFd &Fd);
+    bool UpdateSourceLegacy(const std::string &filename);
+    bool UpdateSourceDeb822(const std::string &filename);
 
 public:
-    SourceRecord *AddSource(RecType Type,
-                            string VendorID,
-                            string URI,
-                            string Dist,
-                            string *Sections,
-                            unsigned short count, string SourceFile);
+    SourceRecord *AddSource(
+        RecType Type,
+        string VendorID,
+        string URI,
+        string Dist,
+        string *Sections,
+        unsigned short count,
+        string SourceFile);
     SourceRecord *AddEmptySource();
     void RemoveSource(SourceRecord *&);
-    void SwapSources( SourceRecord *&, SourceRecord *& );
+    void SwapSources(SourceRecord *&, SourceRecord *&);
+    bool ReadSourceDeb822(const string& listpath);
+    bool ReadSourceLegacy(const string& listpath);
     bool ReadSourcePart(string listpath);
     bool ReadSourceDir(string Dir);
     bool ReadSources();
     bool UpdateSources();
 
-    VendorRecord *AddVendor(string VendorID,
-                            string FingerPrint, string Description);
+    VendorRecord *AddVendor(string VendorID, string FingerPrint, string Description);
     void RemoveVendor(VendorRecord *&);
     bool ReadVendors();
     bool UpdateVendors();
@@ -113,7 +132,7 @@ public:
 
 typedef list<SourcesList::SourceRecord *>::iterator SourcesListIter;
 
-ostream &operator <<(ostream &, const SourcesList::SourceRecord &);
-ostream &operator <<(ostream &os, const SourcesList::VendorRecord &rec);
+ostream &operator<<(ostream &, const SourcesList::SourceRecord &);
+ostream &operator<<(ostream &os, const SourcesList::VendorRecord &rec);
 
 #endif

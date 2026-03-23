@@ -36,8 +36,6 @@
 
 static void     pk_files_finalize	(GObject     *object);
 
-#define PK_FILES_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), PK_TYPE_FILES, PkFilesPrivate))
-
 /**
  * PkFilesPrivate:
  *
@@ -56,7 +54,8 @@ enum {
 	PROP_LAST
 };
 
-G_DEFINE_TYPE (PkFiles, pk_files, PK_TYPE_SOURCE)
+G_DEFINE_TYPE_WITH_PRIVATE (PkFiles, pk_files, PK_TYPE_SOURCE)
+#define GET_PRIVATE(o) (pk_files_get_instance_private (o))
 
 /**
  * pk_files_get_package_id:
@@ -71,8 +70,11 @@ G_DEFINE_TYPE (PkFiles, pk_files, PK_TYPE_SOURCE)
 const gchar *
 pk_files_get_package_id (PkFiles *files)
 {
+	PkFilesPrivate *priv = GET_PRIVATE(files);
+
 	g_return_val_if_fail (PK_IS_FILES (files), NULL);
-	return files->priv->package_id;
+
+	return priv->package_id;
 }
 
 /**
@@ -88,8 +90,11 @@ pk_files_get_package_id (PkFiles *files)
 gchar **
 pk_files_get_files (PkFiles *files)
 {
+	PkFilesPrivate *priv = GET_PRIVATE(files);
+
 	g_return_val_if_fail (PK_IS_FILES (files), NULL);
-	return files->priv->files;
+
+	return priv->files;
 }
 
 /*
@@ -99,7 +104,7 @@ static void
 pk_files_get_property (GObject *object, guint prop_id, GValue *value, GParamSpec *pspec)
 {
 	PkFiles *files = PK_FILES (object);
-	PkFilesPrivate *priv = files->priv;
+	PkFilesPrivate *priv = GET_PRIVATE(files);
 
 	switch (prop_id) {
 	case PROP_PACKAGE_ID:
@@ -121,16 +126,17 @@ static void
 pk_files_set_property (GObject *object, guint prop_id, const GValue *value, GParamSpec *pspec)
 {
 	PkFiles *files = PK_FILES (object);
-	PkFilesPrivate *priv = files->priv;
+	PkFilesPrivate *priv = GET_PRIVATE(files);
 
 	switch (prop_id) {
 	case PROP_PACKAGE_ID:
 		g_free (priv->package_id);
-		priv->package_id = g_strdup (g_value_get_string (value));
+		priv->package_id = g_value_dup_string (value);
 		break;
 	case PROP_FILES:
-		g_strfreev (priv->files);
-		priv->files = g_strdupv (g_value_get_boxed (value));
+		if (priv->files != NULL)
+			g_strfreev (priv->files);
+		priv->files = g_value_dup_boxed (value);
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -169,8 +175,6 @@ pk_files_class_init (PkFilesClass *klass)
 				    G_TYPE_STRV,
 				    G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 	g_object_class_install_property (object_class, PROP_FILES, pspec);
-
-	g_type_class_add_private (klass, sizeof (PkFilesPrivate));
 }
 
 /*
@@ -179,9 +183,6 @@ pk_files_class_init (PkFilesClass *klass)
 static void
 pk_files_init (PkFiles *files)
 {
-	files->priv = PK_FILES_GET_PRIVATE (files);
-	files->priv->package_id = NULL;
-	files->priv->files = NULL;
 }
 
 /*
@@ -191,10 +192,10 @@ static void
 pk_files_finalize (GObject *object)
 {
 	PkFiles *files = PK_FILES (object);
-	PkFilesPrivate *priv = files->priv;
+	PkFilesPrivate *priv = GET_PRIVATE(files);
 
-	g_free (priv->package_id);
-	g_strfreev (priv->files);
+	g_clear_pointer (&priv->package_id, g_free);
+	g_clear_pointer (&priv->files, g_strfreev);
 
 	G_OBJECT_CLASS (pk_files_parent_class)->finalize (object);
 }
@@ -213,4 +214,3 @@ pk_files_new (void)
 	files = g_object_new (PK_TYPE_FILES, NULL);
 	return PK_FILES (files);
 }
-

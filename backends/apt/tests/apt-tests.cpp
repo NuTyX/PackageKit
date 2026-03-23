@@ -1,4 +1,35 @@
+/*
+ * Copyright (c) 2024 Alessandro Astone
+ * Copyright (c) 2024-2025 Matthias Klumpp <matthias@tenstral.net>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; see the file COPYING.  If not, write to
+ * the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+ * Boston, MA 02111-1307, USA.
+ */
+
+#include <filesystem>
+#include <memory>
+#include <apt-pkg/configuration.h>
+
+#include "deb822.h"
+#include "apt-sourceslist.h"
+#include "apt-utils.h"
 #include "gst-matcher.h"
+
+namespace fs = std::filesystem;
+
+static std::string testdata_dir = "";
 
 const char *gst_plugins_bad_pkg = R"(Package: gstreamer1.0-plugins-bad
 Architecture: amd64
@@ -93,12 +124,12 @@ static void
 apt_test_gst_matcher_with_caps (void)
 {
     {
-        /* Matches amd64-only */
+        /* Matches native architecture only */
         GstMatcher matcher(codec_strv("gstreamer1(decoder-audio/mpeg)(mpegversion=4)()(64bit)"));
         g_assert_true(matcher.hasMatches());
 
-        g_assert_true(matcher.matches(gst_plugins_bad_pkg, "amd64"));
-        g_assert_false(matcher.matches(gst_plugins_bad_pkg, "i386"));
+        g_assert_true(matcher.matches(gst_plugins_bad_pkg, TRUE /* native */));
+        g_assert_false(matcher.matches(gst_plugins_bad_pkg, FALSE /* native */));
     }
 
     {
@@ -106,9 +137,8 @@ apt_test_gst_matcher_with_caps (void)
         GstMatcher matcher(codec_strv("gstreamer1(decoder-audio/mpeg)(mpegversion=4)"));
         g_assert_true(matcher.hasMatches());
 
-        g_assert_true(matcher.matches(gst_plugins_bad_pkg, "amd64"));
-        g_assert_true(matcher.matches(gst_plugins_bad_pkg, "i386"));
-        g_assert_true(matcher.matches(gst_plugins_bad_pkg, "arm64"));
+        g_assert_true(matcher.matches(gst_plugins_bad_pkg, TRUE /* native */));
+        g_assert_true(matcher.matches(gst_plugins_bad_pkg, FALSE /* native */));
     }
 
     {
@@ -116,9 +146,9 @@ apt_test_gst_matcher_with_caps (void)
         GstMatcher matcher(codec_strv("gstreamer1(decoder-audio/mpeg)(mpegversion=4)"));
         g_assert_true(matcher.hasMatches());
 
-        g_assert_true(matcher.matches(gst_plugins_bad_pkg, "amd64"));
-        g_assert_false(matcher.matches(gst_plugins_ugly_pkg, "amd64"));
-        g_assert_false(matcher.matches("", "amd64"));
+        g_assert_true(matcher.matches(gst_plugins_bad_pkg, TRUE /* native */));
+        g_assert_false(matcher.matches(gst_plugins_ugly_pkg, TRUE /* native */));
+        g_assert_false(matcher.matches("", TRUE /* native */));
     }
 }
 
@@ -126,12 +156,12 @@ static void
 apt_test_gst_matcher_without_caps (void)
 {
     {
-        /* Matches amd64-only */
+        /* Matches native architecture only */
         GstMatcher matcher(codec_strv("gstreamer1(decoder-video/x-h265)()(64bit)"));
         g_assert_true(matcher.hasMatches());
 
-        g_assert_true(matcher.matches(gst_plugins_bad_pkg, "amd64"));
-        g_assert_false(matcher.matches(gst_plugins_bad_pkg, "i386"));
+        g_assert_true(matcher.matches(gst_plugins_bad_pkg, TRUE /* native */));
+        g_assert_false(matcher.matches(gst_plugins_bad_pkg, FALSE /* native */));
     }
 
     {
@@ -139,9 +169,8 @@ apt_test_gst_matcher_without_caps (void)
         GstMatcher matcher(codec_strv("gstreamer1(decoder-video/x-h265)"));
         g_assert_true(matcher.hasMatches());
 
-        g_assert_true(matcher.matches(gst_plugins_bad_pkg, "amd64"));
-        g_assert_true(matcher.matches(gst_plugins_bad_pkg, "i386"));
-        g_assert_true(matcher.matches(gst_plugins_bad_pkg, "arm64"));
+        g_assert_true(matcher.matches(gst_plugins_bad_pkg, TRUE /* native */));
+        g_assert_true(matcher.matches(gst_plugins_bad_pkg, FALSE /* native */));
     }
 
     {
@@ -149,9 +178,9 @@ apt_test_gst_matcher_without_caps (void)
         GstMatcher matcher(codec_strv("gstreamer1(decoder-video/x-h265)"));
         g_assert_true(matcher.hasMatches());
 
-        g_assert_true(matcher.matches(gst_plugins_bad_pkg, "amd64"));
-        g_assert_false(matcher.matches(gst_plugins_ugly_pkg, "amd64"));
-        g_assert_false(matcher.matches("", "amd64"));
+        g_assert_true(matcher.matches(gst_plugins_bad_pkg, TRUE /* native */));
+        g_assert_false(matcher.matches(gst_plugins_ugly_pkg, TRUE /* native */));
+        g_assert_false(matcher.matches("", TRUE /* native */));
     }
 }
 
@@ -162,20 +191,305 @@ apt_test_gst_matcher_bad_caps (void)
         GstMatcher matcher(codec_strv("gstreamer1(decoder-audio/mpeg)(mpegversion=5)()(64bit)"));
         g_assert_true(matcher.hasMatches());
 
-        g_assert_false(matcher.matches(gst_plugins_bad_pkg, "amd64"));
+        g_assert_false(matcher.matches(gst_plugins_bad_pkg, TRUE /* native */));
     }
 
     {
         GstMatcher matcher(codec_strv("gstreamer1(decoder-audio/mpeg)(mpegversion=5)"));
         g_assert_true(matcher.hasMatches());
 
-        g_assert_false(matcher.matches(gst_plugins_bad_pkg, "amd64"));
+        g_assert_false(matcher.matches(gst_plugins_bad_pkg, TRUE /* native */));
+    }
+}
+
+static void
+apt_test_deb822 (void)
+{
+    const std::string input = R"(# Comment
+Package: testpkg
+Version: 1.0
+# Intermediate comment
+Description: This is a test
+ for multiline
+ field.
+
+# Another comment
+
+Package: packagekit
+Version: 1.4
+)";
+
+    const std::string expectedOutputModify = R"(# Comment
+Package: testpkg
+Version: 2.0.0
+# Intermediate comment
+Description: This is a test
+ for multiline
+ field.
+NewField: hello
+ world
+
+# Another comment
+
+Package: packagekit
+Version: 1.4
+AnotherNewField: Yay: Hurray!
+)";
+
+    const std::string expectedOutputDelete = R"(# Another comment
+
+Package: packagekit
+Version: 1.4
+AnotherNewField: Yay: Hurray!
+)";
+
+    const std::string expectedOutputDuplicate = R"(# Another comment
+
+Package: packagekit
+Version: 1.4
+AnotherNewField: Yay: Hurray!
+
+Package: packagekit
+Version: 1.6
+AnotherNewField: Yay: Hurray!
+)";
+
+    const std::string expectedOutputFieldDelete = R"(# Another comment
+
+Version: 1.4
+AnotherNewField: Yay: Hurray!
+
+Package: packagekit
+Version: 1.6
+AnotherNewField: Yay: Hurray!
+)";
+
+    Deb822File deb;
+    g_assert_true(deb.loadFromString(input));
+
+    // read field
+    auto version = deb.getFieldValue(0, "Version");
+    g_assert_true(version.has_value());
+    g_assert_cmpstr(version.value().c_str(), ==, "1.0");
+
+    auto desc = deb.getFieldValue(0, "Description");
+    g_assert_true(desc.has_value());
+    g_assert_cmpstr(desc.value().c_str(), ==, "This is a test\n for multiline\n field.");
+
+    auto value = deb.getFieldValue(1, "Package");
+    g_assert_true(value.has_value());
+    g_assert_cmpstr(value.value().c_str(), ==, "packagekit");
+
+    // modify/add fields
+    g_assert_true(deb.updateField(0, "Version", "2.0.0"));
+    g_assert_true(deb.updateField(0, "NewField", "hello\nworld"));
+    g_assert_true(deb.updateField(1, "AnotherNewField", "Yay: Hurray!"));
+
+    // get modified fields
+    auto newField = deb.getFieldValue(0, "NewField");
+    g_assert_true(newField.has_value());
+    g_assert_cmpstr(newField.value().c_str(), ==, "hello\nworld");
+    newField = deb.getFieldValue(1, "AnotherNewField");
+    g_assert_true(newField.has_value());
+    g_assert_cmpstr(newField.value().c_str(), ==, "Yay: Hurray!");
+
+    auto output = deb.toString();
+    g_assert_cmpstr(output.c_str(), ==, expectedOutputModify.c_str());
+
+    // test stanza deletion
+    g_assert_cmpuint(deb.stanzaCount(), ==, 2);
+    g_assert_true(deb.deleteStanza(0));
+    g_assert_cmpuint(deb.stanzaCount(), ==, 1);
+
+    output = deb.toString();
+    g_assert_cmpstr(output.c_str(), ==, expectedOutputDelete.c_str());
+
+    // test stanza duplication
+    int newIndex = deb.duplicateStanza(0);
+    g_assert_cmpint(newIndex, >=, 0);
+    g_assert_true(deb.updateField(newIndex, "Version", "1.6"));
+    output = deb.toString();
+    g_assert_cmpstr(output.c_str(), ==, expectedOutputDuplicate.c_str());
+
+    // test field deletion
+    g_assert_true(deb.deleteField(0, "Package"));
+    g_assert_false(deb.getFieldValue(0, "Package").has_value());
+    output = deb.toString();
+    g_assert_cmpstr(output.c_str(), ==, expectedOutputFieldDelete.c_str());
+}
+
+static bool
+_test_string_sets_equal(const set<string> &expected, const set<string> &testSet)
+{
+    if (expected == testSet)
+        return true;
+
+    g_test_message("Mismatch in sets:");
+
+    for (const string &line : testSet) {
+        if (expected.find(line) == expected.end())
+            g_test_message("  Unexpected: %s", line.c_str());
+    }
+
+    for (const string &line : expected) {
+        if (testSet.find(line) == testSet.end())
+            g_test_message("  Missing:    %s", line.c_str());
+    }
+
+    return false;
+}
+
+static bool
+_test_sample_sources(const std::string &testSourcesDir)
+{
+    SourcesList sourcesList;
+    g_assert_true (sourcesList.ReadSourceDir(testSourcesDir));
+
+    const set<string> expectedSources = {
+        testSourcesDir + "/debian.sources:deb:http://deb.debian.org/debian/:experimental:main,contrib,non-free | main contrib non-free | Debian Experimental (main contrib non-free) | disabled",
+        testSourcesDir + "/debian.sources:deb:http://deb.debian.org/debian/:testing:main,contrib,non-free-firmware,non-free | main contrib non-free-firmware non-free | Debian Testing (main contrib non-free-firmware non-free) | enabled",
+        testSourcesDir + "/debian.sources:deb-src:http://deb.debian.org/debian/:testing:main,contrib,non-free-firmware,non-free | main contrib non-free-firmware non-free | Debian Testing (main contrib non-free-firmware non-free) Sources | enabled",
+        testSourcesDir + "/mozilla.list:deb:https://packages.mozilla.org/apt/:mozilla:main | main | packages.mozilla.org/apt - Mozilla (main) | enabled",
+        testSourcesDir + "/mozilla.list:deb:https://packages.mozilla.org/apt/:mozilla-disabled:main | main | packages.mozilla.org/apt - Mozilla disabled (main) | disabled",
+        testSourcesDir + "/ppa-1.sources:deb:https://ppa.launchpadcontent.net/ximion/syntalos/ubuntu/:resolute:main | main | Launchpad PPA: ximion/syntalos/ubuntu - Resolute (main) | enabled"
+    };
+
+    set<string> foundSources;
+    for (SourcesList::SourceRecord *sourceRecord : sourcesList.SourceRecords) {
+        if (sourceRecord->Type & SourcesList::Comment)
+            continue;
+
+        string srcRecordStr = sourceRecord->repoId() + " | " + sourceRecord->joinedSections() + " | " + sourceRecord->niceName() + " | " +
+                        ((sourceRecord->Type & SourcesList::Disabled)? "disabled" : "enabled");
+        foundSources.insert(srcRecordStr);
+    }
+
+    // compare results
+    return _test_string_sets_equal(expectedSources, foundSources);
+}
+
+static void
+apt_test_sources_read (void)
+{
+    std::string testSourcesDir = testdata_dir + "/sources";
+    g_assert_true (_test_sample_sources(testSourcesDir));
+}
+
+static void
+apt_test_sources_write (void)
+{
+    std::string origSampleSourcesDir = testdata_dir + "/sources";
+    std::string wtestSourcesDir = testdata_dir + "/sources.tmp";
+
+    // create pristine directory to work in
+    if (fs::exists(wtestSourcesDir) && fs::is_directory(wtestSourcesDir))
+        fs::remove_all(wtestSourcesDir);
+    fs::copy(origSampleSourcesDir, wtestSourcesDir, fs::copy_options::recursive);
+
+    const set<string> expectedSourcesDisabled = {
+        wtestSourcesDir + "/debian.sources:deb:http://deb.debian.org/debian/:experimental:main,contrib,non-free | main contrib non-free | Debian Experimental (main contrib non-free) | enabled",
+        wtestSourcesDir + "/debian.sources:deb:http://deb.debian.org/debian/:testing:main,contrib,non-free-firmware,non-free | main contrib non-free-firmware non-free | Debian Testing (main contrib non-free-firmware non-free) | disabled",
+        wtestSourcesDir + "/debian.sources:deb-src:http://deb.debian.org/debian/:testing:main,contrib,non-free-firmware,non-free | main contrib non-free-firmware non-free | Debian Testing (main contrib non-free-firmware non-free) Sources | enabled",
+        wtestSourcesDir + "/mozilla.list:deb:https://packages.mozilla.org/apt/:mozilla:main | main | packages.mozilla.org/apt - Mozilla (main) | enabled",
+        wtestSourcesDir + "/mozilla.list:deb:https://packages.mozilla.org/apt/:mozilla-disabled:main | main | packages.mozilla.org/apt - Mozilla disabled (main) | enabled",
+        wtestSourcesDir + "/ppa-1.sources:deb:https://ppa.launchpadcontent.net/ximion/syntalos/ubuntu/:resolute:main | main | Launchpad PPA: ximion/syntalos/ubuntu - Resolute (main) | disabled"
+    };
+
+    // read data and write it back, ensure we do not change anything
+    auto sourcesList = std::make_unique<SourcesList>();
+    g_assert_true (sourcesList->ReadSourceDir(wtestSourcesDir));
+    g_assert_true (sourcesList->UpdateSources());
+    g_assert_true (_test_sample_sources(wtestSourcesDir));
+
+    // enable/disable some stuff
+    for (SourcesList::SourceRecord *sourceRecord : sourcesList->SourceRecords) {
+        if (sourceRecord->Type & SourcesList::Comment)
+            continue;
+
+        if (sourceRecord->niceName() == "Debian Testing (main contrib non-free-firmware non-free)")
+            sourceRecord->Type |= SourcesList::Disabled;
+        else if (sourceRecord->niceName() == "Debian Experimental (main contrib non-free)")
+            sourceRecord->Type = sourceRecord->Type & ~SourcesList::Disabled;
+        else if (sourceRecord->niceName() == "packages.mozilla.org/apt - Mozilla disabled (main)")
+            sourceRecord->Type = sourceRecord->Type & ~SourcesList::Disabled;
+        else if (sourceRecord->niceName() == "Launchpad PPA: ximion/syntalos/ubuntu - Resolute (main)")
+            sourceRecord->Type |= SourcesList::Disabled;
+    }
+    g_assert_true (sourcesList->UpdateSources());
+
+    // full reload
+    sourcesList = std::make_unique<SourcesList>();
+    g_assert_true (sourcesList->ReadSourceDir(wtestSourcesDir));
+
+    set<string> foundSources;
+    for (SourcesList::SourceRecord *sourceRecord : sourcesList->SourceRecords) {
+        if (sourceRecord->Type & SourcesList::Comment)
+            continue;
+
+        string srcRecordStr = sourceRecord->repoId() + " | " + sourceRecord->joinedSections() + " | " + sourceRecord->niceName() + " | " +
+                        ((sourceRecord->Type & SourcesList::Disabled)? "disabled" : "enabled");
+        foundSources.insert(srcRecordStr);
+    }
+
+    // compare results
+    g_assert_true (_test_string_sets_equal(expectedSourcesDisabled, foundSources));
+
+    // restore previous state
+    for (SourcesList::SourceRecord *sourceRecord : sourcesList->SourceRecords) {
+        if (sourceRecord->Type & SourcesList::Comment)
+            continue;
+
+        if (sourceRecord->niceName() == "Debian Testing (main contrib non-free-firmware non-free)")
+            sourceRecord->Type = sourceRecord->Type & ~SourcesList::Disabled;
+        else if (sourceRecord->niceName() == "Debian Experimental (main contrib non-free)")
+            sourceRecord->Type |= SourcesList::Disabled;
+        else if (sourceRecord->niceName() == "packages.mozilla.org/apt - Mozilla disabled (main)")
+            sourceRecord->Type |= SourcesList::Disabled;
+        else if (sourceRecord->niceName() == "Launchpad PPA: ximion/syntalos/ubuntu - Resolute (main)")
+            sourceRecord->Type = sourceRecord->Type & ~SourcesList::Disabled;
+    }
+    g_assert_true (sourcesList->UpdateSources());
+
+    // check if state was restored
+    g_assert_true (_test_sample_sources(wtestSourcesDir));
+
+    // cleanup
+    fs::remove_all(wtestSourcesDir);
+}
+
+static void
+apt_test_changelog_date (void)
+{
+    // Test dates in the format of debian changelog
+    // and the expected result in format ISO8601
+    const set<pair<string, string>> testDatesSet = {
+        {"Thu, 12 Sep 2024 22:51:37 +0200", "2024-09-12T22:51:37+02"},
+        {"Sat, 29 Mar 2025 09:34:52 -0700", "2025-03-29T09:34:52-07"},
+        {"Sun, 13 Jan 2023 11:33:31 +0000", "2023-01-13T11:33:31Z"},
+        // Intentionally wrong date or format
+        {"Sat, 30 Feb 2022 15:12:45 -0500", ""},
+        {"2025-05-20T20:47:45+01", ""},
+    };
+
+    for (const auto &testDate : testDatesSet) {
+        const string isoDate = changelogDateToIso8601(testDate.first);
+        g_assert_cmpstr(isoDate.c_str(), ==, testDate.second.c_str());
     }
 }
 
 int
 main (int argc, char **argv)
 {
+    if (argc == 0)
+        g_error ("No test directory specified!");
+
+    g_assert_nonnull (argv[1]);
+    testdata_dir = std::string (argv[1]);
+    if (!testdata_dir.empty() && testdata_dir.back() == '/')
+        testdata_dir.pop_back();
+    g_assert_true (g_file_test (testdata_dir.c_str(), G_FILE_TEST_EXISTS));
+
+    g_setenv ("G_MESSAGES_DEBUG", "all", TRUE);
     g_test_init (&argc, &argv, NULL);
 
     /* tests go here */
@@ -183,6 +497,10 @@ main (int argc, char **argv)
     g_test_add_func ("/apt/gst-matcher/with-caps", apt_test_gst_matcher_with_caps);
     g_test_add_func ("/apt/gst-matcher/without-caps", apt_test_gst_matcher_without_caps);
     g_test_add_func ("/apt/gst-matcher/bad-caps", apt_test_gst_matcher_bad_caps);
+    g_test_add_func ("/apt/deb822/readwrite", apt_test_deb822);
+    g_test_add_func ("/apt/sources/read", apt_test_sources_read);
+    g_test_add_func ("/apt/sources/write", apt_test_sources_write);
+    g_test_add_func ("/apt/utils/changelog-date", apt_test_changelog_date);
 
     return g_test_run();
 }

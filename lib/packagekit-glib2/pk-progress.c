@@ -32,6 +32,7 @@
 #include <packagekit-glib2/pk-enum.h>
 #include <packagekit-glib2/pk-package-id.h>
 #include <packagekit-glib2/pk-progress.h>
+#include <packagekit-glib2/pk-progress-private.h>
 
 static void     pk_progress_dispose	(GObject     *object);
 static void     pk_progress_finalize	(GObject     *object);
@@ -59,6 +60,8 @@ struct _PkProgressPrivate
 	gchar				*sender;
 	PkItemProgress			*item_progress;
 	PkPackage			*package;
+	PkProgressCallback		 callback;
+	gpointer			 callback_user_data;
 };
 
 enum {
@@ -85,6 +88,7 @@ enum {
 static GParamSpec *obj_properties[PROP_LAST] = { NULL, };
 
 G_DEFINE_TYPE_WITH_PRIVATE (PkProgress, pk_progress, G_TYPE_OBJECT)
+#define GET_PRIVATE(o) (pk_progress_get_instance_private (o))
 
 /*
  * pk_progress_get_property:
@@ -93,7 +97,7 @@ static void
 pk_progress_get_property (GObject *object, guint prop_id, GValue *value, GParamSpec *pspec)
 {
 	PkProgress *progress = PK_PROGRESS (object);
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	switch (prop_id) {
 	case PROP_PACKAGE_ID:
@@ -150,6 +154,17 @@ pk_progress_get_property (GObject *object, guint prop_id, GValue *value, GParamS
 	}
 }
 
+static inline void
+pk_progress_invoke_callback (PkProgress *progress, PkProgressType type)
+{
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
+
+	g_assert (PK_IS_PROGRESS (progress));
+
+	if (priv->callback)
+		priv->callback (progress, type, priv->callback_user_data);
+}
+
 /**
  * pk_progress_set_package_id:
  * @progress: a valid #PkProgress instance
@@ -164,7 +179,7 @@ pk_progress_get_property (GObject *object, guint prop_id, GValue *value, GParamS
 gboolean
 pk_progress_set_package_id (PkProgress *progress, const gchar *package_id)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
@@ -182,6 +197,7 @@ pk_progress_set_package_id (PkProgress *progress, const gchar *package_id)
 	g_free (priv->package_id);
 	priv->package_id = g_strdup (package_id);
 	g_object_notify_by_pspec (G_OBJECT(progress), obj_properties[PROP_PACKAGE_ID]);
+	pk_progress_invoke_callback (progress, PK_PROGRESS_TYPE_PACKAGE_ID);
 
 	return TRUE;
 }
@@ -199,7 +215,7 @@ pk_progress_set_package_id (PkProgress *progress, const gchar *package_id)
 const gchar *
 pk_progress_get_package_id (PkProgress *progress)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), NULL);
 
@@ -221,12 +237,13 @@ gboolean
 pk_progress_set_item_progress (PkProgress *progress,
 			       PkItemProgress *item_progress)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
 	if (g_set_object (&priv->item_progress, item_progress)) {
 		g_object_notify_by_pspec (G_OBJECT(progress), obj_properties[PROP_ITEM_PROGRESS]);
+		pk_progress_invoke_callback (progress, PK_PROGRESS_TYPE_ITEM_PROGRESS);
 		return TRUE;
 	}
 
@@ -246,7 +263,7 @@ pk_progress_set_item_progress (PkProgress *progress,
 PkItemProgress *
 pk_progress_get_item_progress (PkProgress *progress)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), NULL);
 
@@ -267,7 +284,7 @@ pk_progress_get_item_progress (PkProgress *progress)
 gboolean
 pk_progress_set_transaction_id (PkProgress *progress, const gchar *transaction_id)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
@@ -279,6 +296,7 @@ pk_progress_set_transaction_id (PkProgress *progress, const gchar *transaction_i
 	g_free (priv->transaction_id);
 	priv->transaction_id = g_strdup (transaction_id);
 	g_object_notify_by_pspec (G_OBJECT(progress), obj_properties[PROP_TRANSACTION_ID]);
+	pk_progress_invoke_callback (progress, PK_PROGRESS_TYPE_TRANSACTION_ID);
 
 	return TRUE;
 }
@@ -296,7 +314,7 @@ pk_progress_set_transaction_id (PkProgress *progress, const gchar *transaction_i
 const gchar *
 pk_progress_get_transaction_id (PkProgress *progress)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), NULL);
 
@@ -317,7 +335,7 @@ pk_progress_get_transaction_id (PkProgress *progress)
 gboolean
 pk_progress_set_percentage (PkProgress *progress, gint percentage)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
@@ -328,6 +346,7 @@ pk_progress_set_percentage (PkProgress *progress, gint percentage)
 	/* new value */
 	priv->percentage = percentage;
 	g_object_notify_by_pspec (G_OBJECT(progress), obj_properties[PROP_PERCENTAGE]);
+	pk_progress_invoke_callback (progress, PK_PROGRESS_TYPE_PERCENTAGE);
 
 	return TRUE;
 }
@@ -345,7 +364,7 @@ pk_progress_set_percentage (PkProgress *progress, gint percentage)
 gint
 pk_progress_get_percentage (PkProgress *progress)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), -1);
 
@@ -366,7 +385,7 @@ pk_progress_get_percentage (PkProgress *progress)
 gboolean
 pk_progress_set_status (PkProgress *progress, PkStatusEnum status)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
@@ -377,6 +396,7 @@ pk_progress_set_status (PkProgress *progress, PkStatusEnum status)
 	/* new value */
 	priv->status = status;
 	g_object_notify_by_pspec (G_OBJECT(progress), obj_properties[PROP_STATUS]);
+	pk_progress_invoke_callback (progress, PK_PROGRESS_TYPE_STATUS);
 
 	return TRUE;
 }
@@ -394,7 +414,7 @@ pk_progress_set_status (PkProgress *progress, PkStatusEnum status)
 PkStatusEnum
 pk_progress_get_status (PkProgress *progress)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), PK_STATUS_ENUM_UNKNOWN);
 
@@ -415,7 +435,7 @@ pk_progress_get_status (PkProgress *progress)
 gboolean
 pk_progress_set_role (PkProgress *progress, PkRoleEnum role)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
@@ -431,6 +451,7 @@ pk_progress_set_role (PkProgress *progress, PkRoleEnum role)
 	priv->role = role;
 	g_debug ("role now %s", pk_role_enum_to_string (role));
 	g_object_notify_by_pspec (G_OBJECT(progress), obj_properties[PROP_ROLE]);
+	pk_progress_invoke_callback (progress, PK_PROGRESS_TYPE_ROLE);
 
 	return TRUE;
 }
@@ -448,7 +469,7 @@ pk_progress_set_role (PkProgress *progress, PkRoleEnum role)
 PkRoleEnum
 pk_progress_get_role (PkProgress *progress)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), PK_ROLE_ENUM_UNKNOWN);
 
@@ -469,7 +490,7 @@ pk_progress_get_role (PkProgress *progress)
 gboolean
 pk_progress_set_allow_cancel (PkProgress *progress, gboolean allow_cancel)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
@@ -480,6 +501,7 @@ pk_progress_set_allow_cancel (PkProgress *progress, gboolean allow_cancel)
 	/* new value */
 	priv->allow_cancel = allow_cancel;
 	g_object_notify_by_pspec (G_OBJECT(progress), obj_properties[PROP_ALLOW_CANCEL]);
+	pk_progress_invoke_callback (progress, PK_PROGRESS_TYPE_ALLOW_CANCEL);
 
 	return TRUE;
 }
@@ -497,7 +519,7 @@ pk_progress_set_allow_cancel (PkProgress *progress, gboolean allow_cancel)
 gboolean
 pk_progress_get_allow_cancel (PkProgress *progress)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
@@ -518,7 +540,7 @@ pk_progress_get_allow_cancel (PkProgress *progress)
 gboolean
 pk_progress_set_caller_active (PkProgress *progress, gboolean caller_active)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
@@ -529,6 +551,7 @@ pk_progress_set_caller_active (PkProgress *progress, gboolean caller_active)
 	/* new value */
 	priv->caller_active = caller_active;
 	g_object_notify_by_pspec (G_OBJECT(progress), obj_properties[PROP_CALLER_ACTIVE]);
+	pk_progress_invoke_callback (progress, PK_PROGRESS_TYPE_CALLER_ACTIVE);
 
 	return TRUE;
 }
@@ -546,7 +569,7 @@ pk_progress_set_caller_active (PkProgress *progress, gboolean caller_active)
 gboolean
 pk_progress_get_caller_active (PkProgress *progress)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
@@ -567,7 +590,7 @@ pk_progress_get_caller_active (PkProgress *progress)
 gboolean
 pk_progress_set_elapsed_time (PkProgress *progress, guint elapsed_time)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
@@ -578,6 +601,7 @@ pk_progress_set_elapsed_time (PkProgress *progress, guint elapsed_time)
 	/* new value */
 	priv->elapsed_time = elapsed_time;
 	g_object_notify_by_pspec (G_OBJECT(progress), obj_properties[PROP_ELAPSED_TIME]);
+	pk_progress_invoke_callback (progress, PK_PROGRESS_TYPE_ELAPSED_TIME);
 
 	return TRUE;
 }
@@ -595,7 +619,7 @@ pk_progress_set_elapsed_time (PkProgress *progress, guint elapsed_time)
 guint
 pk_progress_get_elapsed_time (PkProgress *progress)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), 0);
 
@@ -616,7 +640,7 @@ pk_progress_get_elapsed_time (PkProgress *progress)
 gboolean
 pk_progress_set_remaining_time (PkProgress *progress, guint remaining_time)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
@@ -627,6 +651,7 @@ pk_progress_set_remaining_time (PkProgress *progress, guint remaining_time)
 	/* new value */
 	priv->remaining_time = remaining_time;
 	g_object_notify_by_pspec (G_OBJECT(progress), obj_properties[PROP_REMAINING_TIME]);
+	pk_progress_invoke_callback (progress, PK_PROGRESS_TYPE_REMAINING_TIME);
 
 	return TRUE;
 }
@@ -644,7 +669,7 @@ pk_progress_set_remaining_time (PkProgress *progress, guint remaining_time)
 guint
 pk_progress_get_remaining_time (PkProgress *progress)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), 0);
 
@@ -665,7 +690,7 @@ pk_progress_get_remaining_time (PkProgress *progress)
 gboolean
 pk_progress_set_speed (PkProgress *progress, guint speed)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
@@ -676,6 +701,7 @@ pk_progress_set_speed (PkProgress *progress, guint speed)
 	/* new value */
 	priv->speed = speed;
 	g_object_notify_by_pspec (G_OBJECT(progress), obj_properties[PROP_SPEED]);
+	pk_progress_invoke_callback (progress, PK_PROGRESS_TYPE_SPEED);
 
 	return TRUE;
 }
@@ -693,7 +719,7 @@ pk_progress_set_speed (PkProgress *progress, guint speed)
 guint
 pk_progress_get_speed (PkProgress *progress)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), 0);
 
@@ -714,7 +740,7 @@ pk_progress_get_speed (PkProgress *progress)
 gboolean
 pk_progress_set_download_size_remaining (PkProgress *progress, guint64 download_size_remaining)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
@@ -725,6 +751,7 @@ pk_progress_set_download_size_remaining (PkProgress *progress, guint64 download_
 	/* new value */
 	priv->download_size_remaining = download_size_remaining;
 	g_object_notify_by_pspec (G_OBJECT(progress), obj_properties[PROP_DOWNLOAD_SIZE_REMAINING]);
+	pk_progress_invoke_callback (progress, PK_PROGRESS_TYPE_DOWNLOAD_SIZE_REMAINING);
 
 	return TRUE;
 }
@@ -742,7 +769,7 @@ pk_progress_set_download_size_remaining (PkProgress *progress, guint64 download_
 guint64
 pk_progress_get_download_size_remaining (PkProgress *progress)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), 0);
 
@@ -763,7 +790,7 @@ pk_progress_get_download_size_remaining (PkProgress *progress)
 gboolean
 pk_progress_set_transaction_flags (PkProgress *progress, guint64 transaction_flags)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
@@ -774,6 +801,7 @@ pk_progress_set_transaction_flags (PkProgress *progress, guint64 transaction_fla
 	/* new value */
 	priv->transaction_flags = transaction_flags;
 	g_object_notify_by_pspec (G_OBJECT(progress), obj_properties[PROP_TRANSACTION_FLAGS]);
+	pk_progress_invoke_callback (progress, PK_PROGRESS_TYPE_TRANSACTION_FLAGS);
 
 	return TRUE;
 }
@@ -791,7 +819,7 @@ pk_progress_set_transaction_flags (PkProgress *progress, guint64 transaction_fla
 guint64
 pk_progress_get_transaction_flags (PkProgress *progress)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), 0);
 
@@ -812,7 +840,7 @@ pk_progress_get_transaction_flags (PkProgress *progress)
 gboolean
 pk_progress_set_uid (PkProgress *progress, guint uid)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
@@ -823,6 +851,7 @@ pk_progress_set_uid (PkProgress *progress, guint uid)
 	/* new value */
 	priv->uid = uid;
 	g_object_notify_by_pspec (G_OBJECT(progress), obj_properties[PROP_UID]);
+	pk_progress_invoke_callback (progress, PK_PROGRESS_TYPE_UID);
 
 	return TRUE;
 }
@@ -840,7 +869,7 @@ pk_progress_set_uid (PkProgress *progress, guint uid)
 guint
 pk_progress_get_uid (PkProgress *progress)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), 0);
 
@@ -861,7 +890,7 @@ pk_progress_get_uid (PkProgress *progress)
 gboolean
 pk_progress_set_sender (PkProgress *progress, const gchar *bus_name)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
@@ -873,6 +902,7 @@ pk_progress_set_sender (PkProgress *progress, const gchar *bus_name)
 	g_free (priv->sender);
 	priv->sender = g_strdup (bus_name);
 	g_object_notify_by_pspec (G_OBJECT(progress), obj_properties[PROP_SENDER]);
+	pk_progress_invoke_callback (progress, PK_PROGRESS_TYPE_SENDER);
 
 	return TRUE;
 }
@@ -890,7 +920,7 @@ pk_progress_set_sender (PkProgress *progress, const gchar *bus_name)
 gchar*
 pk_progress_get_sender (PkProgress *progress)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), NULL);
 
@@ -911,12 +941,13 @@ pk_progress_get_sender (PkProgress *progress)
 gboolean
 pk_progress_set_package (PkProgress *progress, PkPackage *package)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), FALSE);
 
 	if (g_set_object (&priv->package, package)) {
 		g_object_notify_by_pspec (G_OBJECT(progress), obj_properties[PROP_PACKAGE]);
+		pk_progress_invoke_callback (progress, PK_PROGRESS_TYPE_PACKAGE);
 		return TRUE;
 	}
 
@@ -936,11 +967,34 @@ pk_progress_set_package (PkProgress *progress, PkPackage *package)
 PkPackage *
 pk_progress_get_package (PkProgress *progress)
 {
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_return_val_if_fail (PK_IS_PROGRESS (progress), NULL);
 
 	return priv->package;
+}
+
+/**
+ * pk_progress_new_with_callback:
+ * @callback: (scope notified): the function to run when the progress changes
+ * @user_data: data to pass to @callback
+ *
+ * Create a progress with a callback function.
+ *
+ * Returns: (transfer full): a new #PkProgress
+ **/
+PkProgress *
+pk_progress_new_with_callback (PkProgressCallback callback, gpointer user_data)
+{
+	PkProgress *progress;
+	PkProgressPrivate *priv;
+
+	progress = pk_progress_new ();
+	priv = pk_progress_get_instance_private (progress);
+	priv->callback = callback;
+	priv->callback_user_data = user_data;
+
+	return progress;
 }
 
 /*
@@ -990,6 +1044,15 @@ pk_progress_set_property (GObject *object, guint prop_id, const GValue *value, G
 		break;
 	case PROP_ITEM_PROGRESS:
 		pk_progress_set_item_progress (progress, g_value_get_object (value));
+		break;
+	case PROP_SENDER:
+		pk_progress_set_sender (progress, g_value_get_string (value));
+		break;
+	case PROP_DOWNLOAD_SIZE_REMAINING:
+		pk_progress_set_download_size_remaining (progress, g_value_get_uint64 (value));
+		break;
+	case PROP_TRANSACTION_FLAGS:
+		pk_progress_set_transaction_flags (progress, g_value_get_uint64 (value));
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1211,7 +1274,7 @@ pk_progress_class_init (PkProgressClass *klass)
 static void
 pk_progress_init (PkProgress *progress)
 {
-	progress->priv = pk_progress_get_instance_private (progress);
+	progress->priv = GET_PRIVATE(progress);
 }
 
 /*
@@ -1221,7 +1284,7 @@ static void
 pk_progress_dispose (GObject *object)
 {
 	PkProgress *progress = PK_PROGRESS (object);
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_clear_object (&priv->package);
 	g_clear_object (&priv->item_progress);
@@ -1236,7 +1299,7 @@ static void
 pk_progress_finalize (GObject *object)
 {
 	PkProgress *progress = PK_PROGRESS (object);
-	PkProgressPrivate *priv = pk_progress_get_instance_private (progress);
+	PkProgressPrivate *priv = GET_PRIVATE(progress);
 
 	g_clear_pointer (&priv->package_id, g_free);
 	g_clear_pointer (&priv->transaction_id, g_free);

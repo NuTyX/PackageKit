@@ -1,28 +1,3 @@
-executable(
-  'pkcon',
-  'pk-console.c',
-  dependencies: packagekit_glib2_dep,
-  install: true,
-  c_args: [
-    '-DPK_COMPILATION=1',
-    '-DGETTEXT_PACKAGE="@0@"'.format(meson.project_name()),
-    '-DPACKAGE_LOCALE_DIR="@0@"'.format(package_locale_dir),
-    '-DVERSION="@0@"'.format(meson.project_version()),
-  ]
-)
-
-executable(
-  'pkmon',
-  'pk-monitor.c',
-  dependencies: packagekit_glib2_dep,
-  install: true,
-  c_args: [
-    '-DPK_COMPILATION=1',
-    '-DGETTEXT_PACKAGE="@0@"'.format(meson.project_name()),
-    '-DPACKAGE_LOCALE_DIR="@0@"'.format(package_locale_dir),
-    '-DVERSION="@0@"'.format(meson.project_version()),
-  ]
-)
 
 if get_option('offline_update')
   executable(
@@ -36,38 +11,53 @@ if get_option('offline_update')
     install_dir: get_option('libexecdir'),
     c_args: [
       '-DPK_COMPILATION=1',
-        '-DGETTEXT_PACKAGE="@0@"'.format(meson.project_name()),
+      '-DGETTEXT_PACKAGE="@0@"'.format(meson.project_name()),
       '-DPACKAGE_LOCALE_DIR="@0@"'.format(package_locale_dir),
     ]
   )
 endif
 
+executable(
+  'pkgcli',
+  [
+    'pkgcli.c',
+    'pkgc-context.c',
+    'pkgc-manage.c',
+    'pkgc-monitor.c',
+    'pkgc-query.c',
+    'pkgc-repo.c',
+    'pkgc-util.c',
+  ],
+  dependencies: [
+    packagekit_glib2_dep,
+    jansson_dep],
+  install: true,
+  c_args: [
+    '-DPK_COMPILATION=1',
+    '-DGETTEXT_PACKAGE="@0@"'.format(meson.project_name()),
+    '-DPACKAGE_LOCALE_DIR="@0@"'.format(package_locale_dir),
+    '-DVERSION="@0@"'.format(meson.project_version()),
+  ]
+)
+
 if get_option('man_pages')
   xsltproc = find_program('xsltproc')
-  pkcon_man = custom_target(
-    'pkcon.1',
-    input: 'pkcon.xml',
-    output: 'pkcon.1',
+  custom_target(
+    'pkgcli.1',
+    input: 'pkgcli.xml',
+    output: 'pkgcli.1',
     command: [
       xsltproc,
+      '--nonet',
       '--output', '@OUTPUT@',
-      'http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl',
+      'http://docbook.sourceforge.net/release/xsl-ns/current/manpages/docbook.xsl',
       '@INPUT@',
     ],
     install: true,
     install_dir: join_paths(get_option('datadir'), 'man', 'man1'),
   )
-  pkmon_man = custom_target(
-    'pkmon.1',
-    input: 'pkmon.xml',
-    output: 'pkmon.1',
-    command: [
-      xsltproc,
-      '--output', '@OUTPUT@',
-      'http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl',
-      '@INPUT@',
-    ],
-    install: true,
-    install_dir: join_paths(get_option('datadir'), 'man', 'man1'),
-  )
+endif
+
+if get_option('legacy_tools')
+    subdir('pkcon')
 endif

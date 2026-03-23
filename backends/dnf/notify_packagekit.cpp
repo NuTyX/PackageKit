@@ -13,6 +13,7 @@
 #include <packagekit-glib2/pk-version.h>
 
 using namespace libdnf5;
+using namespace std::literals;
 
 namespace {
 
@@ -55,10 +56,30 @@ public:
 };
 
 void NotifyPackagekitPlugin::post_transaction(const libdnf5::base::Transaction & transaction) {
-    auto packagekitProxy = sdbus::createProxy("org.freedesktop.PackageKit", "/org/freedesktop/PackageKit");
-    auto method = packagekitProxy->createMethodCall("org.freedesktop.PackageKit", "StateHasChanged");
-    method << "posttrans";
-    packagekitProxy->callMethod(method);
+#if SDBUSCPP_VERSION_MAJOR >= 2
+    auto serviceName = sdbus::ServiceName{"org.freedesktop.PackageKit"};
+    auto objectPath = sdbus::ObjectPath{"/org/freedesktop/PackageKit"};
+    auto interfaceName = sdbus::InterfaceName{"org.freedesktop.PackageKit"};
+    auto methodName = sdbus::MethodName{"StateHasChanged"};
+#else
+    auto serviceName = "org.freedesktop.PackageKit"s;
+    auto objectPath = "/org/freedesktop/PackageKit"s;
+    auto interfaceName = "org.freedesktop.PackageKit"s;
+    auto methodName = "StateHasChanged"s;
+#endif
+
+    try {
+        auto connection = sdbus::createSystemBusConnection();
+        auto packagekitProxy = sdbus::createProxy(std::move(connection), std::move(serviceName), std::move(objectPath), sdbus::dont_run_event_loop_thread);
+        auto method = packagekitProxy->createMethodCall(std::move(interfaceName), std::move(methodName));
+        method << "posttrans";
+
+#if SDBUSCPP_VERSION_MAJOR >= 2
+        packagekitProxy->callMethodAsync(method, sdbus::with_future);
+#else
+        packagekitProxy->callMethod(method, sdbus::with_future);
+#endif
+    } catch(const sdbus::Error&) {}
 }
 
 }  // namespace

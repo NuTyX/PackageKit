@@ -1,3 +1,220 @@
+Version 1.3.4
+~~~~~~~~~~~~~
+Released: 2026-01-28
+
+Notes:
+ * This version introduces the new DNF5 backend for distributions that use DNF.
+ * The "pkgctl" utility has been renamed to "pkgcli" to avoid a name clash
+   with an Arch Linux-specific developer tool that has the same binary name.
+   It is also now built by default.
+
+Features:
+ * Build pkgctl by default (Matthias Klumpp)
+ * pkgctl: Add manual page (Matthias Klumpp)
+ * pkgctl: Add basic bash-completion support (Matthias Klumpp)
+ * Rename the pkgctl utility to pkgcli (Matthias Klumpp)
+ * pkgcli: Autoremove unused dependencies by default (Matthias Klumpp)
+
+Backends:
+ * alpm: Ignore new Sandbox configuration options (Jelle van der Waa)
+ * apt: Pretty-print Launchpad PPA repos and shorten repo-IDs a bit (Matthias Klumpp)
+ * apt: Do not destroy multiline fields when editing deb822 sources (Matthias Klumpp)
+ * apt: Only upgrade packages selected by the user instead of all packages (Matthias Klumpp)
+ * dnf: Implement DependsOn and RequiredBy (Neal Gompa)
+ * backends: Initial implementation of the DNF5 backend (Neal Gompa)
+ * dnf5: Invalidate context when receiving updates-changed signal (Gordon Messmer)
+ * dnf5: Inhibit handling duplicate/redundant change notifications (Gordon Messmer)
+ * dnf5: Add rpm plugin to notify PackageKit when transactions complete (Gordon Messmer)
+ * freebsd: Properly finish the some job when we're offline (Gleb Popov)
+ * freebsd: Don't check if we're online when handling get-updates (Gleb Popov)
+ * freebsd: Feed package names without versions to the update command (Gleb Popov)
+
+Bugfixes:
+ * backends: Hook up job user_data destroy func (Alessandro Astone)
+ * pkgctl: Make updating a specific package work like in pkcon (Matthias Klumpp)
+ * pkgctl: Filter out blocked packages before attempting an update (Matthias Klumpp)
+ * pkgctl: Improve filtering and error handling (Matthias Klumpp)
+ * pkgctl: Improve local package detection (Matthias Klumpp)
+ * pkgcli: Fix progress-bar on CJK locale by resolving char width to terminal columns (Matthias Klumpp)
+ * pkgcli: Pad & align packages/summaries in output for requested changes (Matthias Klumpp)
+ * pkgcli: Display proper error if pkg is already installed & quit progress bars (Matthias Klumpp)
+ * cli: Cap progress-bar drawing area at a reasonable size (Matthias Klumpp)
+ * cron: Use pkgcli to execute operations (Matthias Klumpp)
+ * pkgcli: Set default cache-age of 3 days, instead of "never" (Matthias Klumpp)
+ * policy: Only permit password-less system *updates* not system *upgrades* (Matthias Klumpp)
+ * meson: Ensure enums.py is always available for Python tests (Matthias Klumpp)
+ * meson: Take flags into account when testing for features (Matthias Klumpp)
+ * pk-client: Fix assertion failure when PkClientState is cancelled early (Philip Withnall)
+ * pk-client: Improve error code when PkClientState is cancelled early (Philip Withnall)
+ * pk-client: Remove a load of redundant GCancellable NULL checks (Philip Withnall)
+ * Fix invalid size checks for size and download-size for spawned backends (sid)
+ * Add details() tests for 'size' and 'download-size' properties for spawned backends (sid)
+
+Miscellaneous:
+ * Start requiring 'download-size' for get_details() in spawned backends (Joey Riches)
+ * python: Ensure 'size' & 'download-size' are reported as unknown if None (Joey Riches)
+ * progress-bar: Drop deprecated API (Matthias Klumpp)
+ * pk-client: Add more debug messages to the PkClientState lifecycle (Philip Withnall)
+ * general: Fix spelling of D-Bus in comments and docs (Philip Withnall)
+ * docs: Fix capitalisation of GLib and GObject (Philip Withnall)
+ * doc: Delete MAINTAINERS file in favour of PackageKit.doap (Philip Withnall)
+
+Version 1.3.3
+~~~~~~~~~~~~~
+Released: 2025-11-24
+
+Notes:
+ * This release introduces the experimental pkgctl utility, as a modern command-line
+   PackageKit client. It will eventually replace pkcon/pkmon, although we will keep
+   both available for a long time. The pkgctl build is disabled by default, pass
+   -Dpkgctl=true to enable it for testing.
+
+Features:
+ * lib: Modernize progress bar display (Matthias Klumpp)
+ * backends: Make extended job details API the default (Matthias Klumpp)
+ * progress-bar: Allow restarting an existing progress-bar (Matthias Klumpp)
+ * pkgctl: Add initial version of modern package-management CLI tool (Matthias Klumpp)
+
+Backends:
+ * backends: Add eopkg (forked from PiSi) (Joey Riches)
+ * apt: Fully resolve update candidates, allowing removals (Matthias Klumpp)
+ * apt: Emit pulsing/unknown progress while waiting for cache lock (Matthias Klumpp)
+
+Bugfixes:
+ * offline-update: Move FailureAction= to the correct  (Andrew Sayers)
+ * PkBackendJob: Fix clearing GDateTime pointer (Jelle van der Waa)
+ * lib: When spawning debconf helper, actually pass environment (Matthias Klumpp)
+ * client: Send SIGTERM to debconf helper instead of SIGQUIT (Matthias Klumpp)
+ * client: Pass a few more env vars to the debconf helper to fix Qt helpers (Matthias Klumpp)
+ * pkcon: Don't filter out removed packages from the update target set (Matthias Klumpp)
+ * client: Allow showing progress on very wide terminals on large screens (Matthias Klumpp)
+ * Add missing role-enum description for repair-system (Matthias Klumpp)
+ * command-not-found: inherit stdin (Osama Albahrani)
+
+Miscellaneous:
+ * Bump C standard version to C17 (Matthias Klumpp)
+ * policy: Allow admins to trigger updates without password, require password for installations (Matthias Klumpp)
+ * policy: Allow inactive users to refresh sources (Matthias Klumpp)
+ * policy: Allow offline-upgrades to be triggered without password for admin users (Matthias Klumpp)
+ * Find KDE debconf communicator in libexec as well (Matthias Klumpp)
+ * offline-updates: Assume plymouth>=0.9.5 by default (Matthias Klumpp)
+ * build: Fix "missing field initializer" clang warnings (sid)
+ * build: Fix "set but not used" clang warnings (sid)
+ * meson: Move broader warning flags ahead of narrower ones for clang (sid)
+
+Version 1.3.2
+~~~~~~~~~~~~~
+Released: 2025-10-02
+
+Features:
+ * Modernize the codebase for modern GLib (Corentin Noël)
+ * pk-offline: Store package ID lists using g_key_file_set_string_list() (Gleb Popov)
+ * pkcon: Make description field the last field in 'get-details' output (sid)
+ * pkcon: Improve 'size' output formatting for 'get-details' command (sid)
+ * pkcon: Add 'download-size' to 'get-details' command (sid)
+
+Backends:
+ * alpm: Use 'pk_backend_job_details_full()' so download size is reported properly (sid)
+ * apt: Handle gstreamer ()(64bit) suffix on any architecture (Alessandro Astone)
+ * apt: Fix updated and issued dates on changelog parsing (Ismael Asensio)
+ * apt: debconf-helper: Fix g_object_unref (main_loop) assertion error (sid)
+ * apt: debconf-helper: Fix g_object_unref (socket) assertion error (sid)
+ * dnf: update ROSA config (Mikhail Novosyolov)
+ * dnf5: Compile against both sdbus version 1 and 2 (Alessandro Astone)
+ * dnf5: Do not wait for dbus reply (Alessandro Astone)
+ * dnf5: Ignore bus errors (Alessandro Astone)
+ * dnf5: Link against libdnf5 (Alessandro Astone)
+ * zypp: Implement parallel downloading (Jonathan Kang)
+ * zypp: use gint instead of guint for _preload_progress (Jonathan Kang)
+ * zypp: Use 'pk_backend_job_details_full()' so download size is reported properly (sid)
+
+Bugfixes:
+ * Use GDateTime instead of the deprecated GTimeVal (Corentin Noël)
+ * pk-control: Use g_debug() rather than g_warning() for proxy error (Philip Withnall)
+ * pk-client: Fix a leak when cancelling a client task (Philip Withnall)
+ * pk-client: Use pk_client_state_add() internally more consistently (Philip Withnall)
+ * pk-client: Avoid array being modified during iteration (Philip Withnall)
+ * pk-client: Tidy up waiting_for_finished implementation (Philip Withnall)
+ * pk-client: Track PkClientState from earlier in its lifecycle (Philip Withnall)
+ * pk-client: Factor out duplicated PkClientState finish code (Philip Withnall)
+ * pk-client: Fix an assertion failure in PkClient (Philip Withnall)
+ * pk-client: Simplify implementation of PkClient:idle property (Philip Withnall)
+ * pk-client: Fix leak on copy-downloads code path (Philip Withnall)
+ * pkmon: Fix g_object_unref(client) assertion error (sid)
+
+Miscellaneous:
+ * Require polkit 0.114 (Corentin Noël)
+ * ci: Add PR label workflow (Matthias Klumpp)
+ * Add backend maintainer list (Matthias Klumpp)
+ * style: Use GET_PRIVATE macro consistently (Matthias Klumpp)
+ * tests: Add test to sanity check all object types in public API (sid)
+
+Version 1.3.1
+~~~~~~~~~~~~~
+Released: 2025-04-22
+
+Features:
+ * Add GetResults method to the Offline interface (Gleb Popov)
+
+Backends:
+ * apt: Fix matching gstreamer pkgs where the only modifier is ()(64bit) (Alessandro Astone)
+ * apt: Add tests for gst-matcher (Alessandro Astone)
+ * apt: Define an apt backend static library (Corentin Noël)
+ * apt: Adjust for libapt-pkg7.0 API (Julian Andres Klode)
+ * apt: Fix floating point value comparison (Matthias Klumpp)
+ * apt: Drop remnants of RPM sources support (Matthias Klumpp)
+ * apt: Add tests for repo-source reading (Matthias Klumpp)
+ * apt: Add non-destructive Deb822 file parser & streamline sources parsing (Matthias Klumpp)
+ * apt: Implement enable/disable support for deb822-style repo sources (Matthias Klumpp)
+ * apt: Harmonize repo-ids between deb822 and legacy sources (Matthias Klumpp)
+ * apt: Use 'pk_backend_job_details_full()' so download size is reported properly (sid)
+ * apt: not call dbus on ostree-managed systems (ssk-wh)
+ * alpm: fix mixed declarations and code (Christian Hesse)
+ * alpm: fix function declaration prototype (Christian Hesse)
+ * alpm: Use 'alpm_errno()' rather than incorrect 'errno' for libalpm errors (sid)
+ * alpm: Fix 'pk_alpm_logcb' printf format warning (sid)
+ * dnf5: Compile against both libdnf5 version 5.1.x and 5.2.x (Alessandro Astone)
+ * dnf: Make a bunch of implicit enum conversions explicit (Matthias Klumpp)
+ * dnf: OpenMandriva: small repo changes (Virtuti Militari)
+ * entropy/portage: Fix missing 'comma' in meson.install_data () (sidt4)
+ * freebsd: Use correct types for PackageView::{compressed,flat}size() (Gleb Popov)
+ * zypp: Mark the correct packages to-be-installed (Jonathan Kang)
+ * zypp: Raise exception on empty search string (Miika Alikirri)
+ * zypp: Fix -Werror=missing-declarations by making functions static (sid)
+ * zypp: Add G_GNUC_UNUSED to unused function 'zypp_get_packages_by_file' (sid)
+ * zypp: Fix '-Wignored-qualifiers' by removing 'const' (sid)
+ * zypp: Use 'G_GNUC_PRINTF' attribute to 'zypp_backend_finished_error' and fixup warnings (sid)
+ * zypp: Disable deprecation errors in zypp backend temporarily (sid)
+
+Bugfixes:
+ * pk-client-helper: Do not crash on edge-case GIO error (Alessandro Astone)
+ * pk-client: Allow debconf helper to display Wayland windows (Alessandro Astone)
+ * pk-task: pk_task_user_accepted/declined_idle_cb actually take an unowned gtask (Corentin Noël)
+ * PkClient: Use g_atomic_int for the copy count (Corentin Noël)
+ * PkClient: Remove the proxy_props field (Corentin Noël)
+ * PkClient: Fix mismatch between remaining and elapsed time (Corentin Noël)
+ * pk_dbus_get_session: Move ConsoleKit check under the appropriate ifdef case (Gleb Popov)
+ * Fix check in pk_engine_proxy_logind_cb (Gleb Popov)
+ * meson: Explicitly specify native argument when adding C++ compiler (Matthias Klumpp)
+ * pk-client: Fix runtime warning when backend does not support role (Milan Crha)
+
+Miscellaneous:
+ * Allow changing offline update action without polkit authentication (Alessandro Astone)
+ * pk-task: Modernize the codebase (Corentin Noël)
+ * PkPackage: Modernize the codebase (Corentin Noël)
+ * PkControl: Modernize the codebase (Corentin Noël)
+ * PkProgress: Move the progress_callback from PkClientState to PkProgress (Corentin Noël)
+ * Decouple offline_update and systemd Meson features (Gleb Popov)
+ * Decouple pk-backend from HAVE_SYSTEMD_SD_LOGIN_H (Gleb Popov)
+ * ci: Build on Debian trixie & latest Fedora (Matthias Klumpp)
+ * ci: Speed up build tests on Debian (Matthias Klumpp)
+ * ci: Add ALPM & ZYPP backends to Fedora CI (sid)
+ * meson: Remove deprecated functions & bump to 1.0 (Matthias Klumpp)
+ * Compile with C11 + GNU extensions (Matthias Klumpp)
+ * meson: Bring back maintainer mode for stricter checks (Matthias Klumpp)
+ * doap: Update the maintainer list to current maintainers (Neal Gompa)
+ * pkcon: Sort commands in 'pkcon' help output (sid)
+
 Version 1.3.0
 ~~~~~~~~~~~~~
 Released: 2024-06-16

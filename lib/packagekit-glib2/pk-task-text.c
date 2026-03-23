@@ -30,19 +30,11 @@
 #include <packagekit-glib2/pk-task.h>
 
 #include "pk-task-text.h"
-#include "pk-console-shared.h"
-static void     pk_task_text_finalize	(GObject     *object);
+#include "pk-console-private.h"
 
-#define PK_TASK_TEXT_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), PK_TYPE_TASK_TEXT, PkTaskTextPrivate))
-
-/**
- * PkTaskTextPrivate:
- *
- * Private #PkTaskText data
- **/
-struct _PkTaskTextPrivate
+struct _PkTaskText
 {
-	gpointer		 user_data;
+ PkTask parent;
 };
 
 G_DEFINE_TYPE (PkTaskText, pk_task_text, PK_TYPE_TASK)
@@ -54,10 +46,6 @@ static void
 pk_task_text_untrusted_question (PkTask *task, guint request, PkResults *results)
 {
 	gboolean ret;
-	PkTaskTextPrivate *priv = PK_TASK_TEXT(task)->priv;
-
-	/* set some user data, for no reason */
-	priv->user_data = NULL;
 
 	/* clear new line */
 	g_print ("\n");
@@ -91,10 +79,6 @@ pk_task_text_key_question (PkTask *task, guint request, PkResults *results)
 	gchar *key_fingerprint;
 	gchar *key_timestamp;
 	PkRepoSignatureRequired *item;
-	PkTaskTextPrivate *priv = PK_TASK_TEXT(task)->priv;
-
-	/* set some user data, for no reason */
-	priv->user_data = NULL;
 
 	/* clear new line */
 	g_print ("\n");
@@ -172,10 +156,6 @@ pk_task_text_eula_question (PkTask *task, guint request, PkResults *results)
 	guint i;
 	gboolean ret;
 	GPtrArray *array;
-	PkTaskTextPrivate *priv = PK_TASK_TEXT(task)->priv;
-
-	/* set some user data, for no reason */
-	priv->user_data = NULL;
 
 	/* clear new line */
 	g_print ("\n");
@@ -230,10 +210,6 @@ pk_task_text_media_change_question (PkTask *task, guint request, PkResults *resu
 	gchar *media_id;
 	PkMediaTypeEnum media_type;
 	gchar *media_text;
-	PkTaskTextPrivate *priv = PK_TASK_TEXT(task)->priv;
-
-	/* set some user data, for no reason */
-	priv->user_data = NULL;
 
 	/* clear new line */
 	g_print ("\n");
@@ -336,27 +312,18 @@ package_sort_func (gconstpointer a, gconstpointer b)
 	return g_strcmp0 (split1[PK_PACKAGE_ID_NAME], split2[PK_PACKAGE_ID_NAME]);
 }
 
-/*
+/**
  * pk_task_text_simulate_question:
- **/
+ */
 static void
 pk_task_text_simulate_question (PkTask *task, guint request, PkResults *results)
 {
-	guint i;
+	guint max_width = 0;
 	gboolean ret;
-	gchar *printable;
-	PkInfoEnum info;
-	gchar *package_id;
-	gchar *summary;
-	GList *l;
 	PkPackage *package;
-	GPtrArray *array;
-	PkTaskTextPrivate *priv = PK_TASK_TEXT(task)->priv;
+	g_autoptr(GPtrArray) array = NULL;
 	g_autoptr(GHashTable) table = NULL;
 	g_autoptr(GList) list = NULL;
-
-	/* set some user data, for no reason */
-	priv->user_data = NULL;
 
 	/* clear new line */
 	g_print ("\n");
@@ -367,7 +334,8 @@ pk_task_text_simulate_question (PkTask *task, guint request, PkResults *results)
 	/* put data in a hash table for easier sorting */
 	table = g_hash_table_new_full (g_direct_hash, g_direct_equal,
 	                               NULL, (GDestroyNotify) g_ptr_array_unref);
-	for (i = 0; i < array->len; i++) {
+	for (guint i = 0; i < array->len; i++) {
+		PkInfoEnum info;
 		g_autoptr(GPtrArray) package_array = NULL;
 
 		package = g_ptr_array_index (array, i);
@@ -385,9 +353,38 @@ pk_task_text_simulate_question (PkTask *task, guint request, PkResults *results)
 		                     g_ptr_array_ref (package_array));
 	}
 
-	/* go over the data we now have in a hash table */
+	/* calculate the maximum package name width for proper alignment */
+	max_width = 0;
 	list = g_hash_table_get_keys (table);
-	for (l = list; l != NULL; l = l->next) {
+	for (GList *l = list; l != NULL; l = l->next) {
+		GPtrArray *package_array;
+
+		package_array = g_hash_table_lookup (table, l->data);
+		for (guint i = 0; i < package_array->len; i++) {
+			guint width;
+			g_autofree gchar *package_id = NULL;
+			g_autofree gchar *printable = NULL;
+
+			package = g_ptr_array_index (package_array, i);
+			g_object_get (package, "package-id", &package_id, NULL);
+			/* NOTE: We could put this into an array to not invoke pk_package_id_to_printable()
+			 * multiple times and save allocations, but this is simpler code.
+			 * If this becomes a problem in future, PkPackage should get a function to
+			 * generate & cache a printable name, */
+			printable = pk_package_id_to_printable (package_id);
+
+			width = pk_console_str_width (printable);
+			if (width > max_width)
+				max_width = width;
+		}
+	}
+
+	/* add a minimum spacing of 2 characters between columns */
+	max_width += 2;
+
+	/* go over the data we now have in a hash table and print */
+	for (GList *l = list; l != NULL; l = l->next) {
+		PkInfoEnum info;
 		GPtrArray *package_array;
 		const gchar *title;
 
@@ -403,17 +400,22 @@ pk_task_text_simulate_question (PkTask *task, guint request, PkResults *results)
 		/* sort the packages and print */
 		package_array = g_hash_table_lookup (table, l->data);
 		g_ptr_array_sort (package_array, package_sort_func);
-		for (i = 0; i < package_array->len; i++) {
+		for (guint i = 0; i < package_array->len; i++) {
+			g_autofree gchar *package_id = NULL;
+			g_autofree gchar *summary = NULL;
+			g_autofree gchar *printable = NULL;
+			g_autofree gchar *printable_pad = NULL;
+
 			package = g_ptr_array_index (package_array, i);
 			g_object_get (package,
 				      "package-id", &package_id,
 				      "summary", &summary,
 				      NULL);
 			printable = pk_package_id_to_printable (package_id);
-			g_print (" %s\t%s\n", printable, summary);
-			g_free (printable);
-			g_free (package_id);
-			g_free (summary);
+
+			/* pad the package name to align descriptions */
+			printable_pad = pk_console_strpad (printable, max_width);
+			g_print (" %s%s\n", printable_pad, summary);
 		}
 	}
 
@@ -426,8 +428,6 @@ pk_task_text_simulate_question (PkTask *task, guint request, PkResults *results)
 		g_print ("%s\n", _("The transaction did not proceed."));
 		pk_task_user_declined (task, request);
 	}
-
-	g_ptr_array_unref (array);
 }
 
 /*
@@ -436,17 +436,13 @@ pk_task_text_simulate_question (PkTask *task, guint request, PkResults *results)
 static void
 pk_task_text_class_init (PkTaskTextClass *klass)
 {
-	GObjectClass *object_class = G_OBJECT_CLASS (klass);
 	PkTaskClass *task_class = PK_TASK_CLASS (klass);
 
-	object_class->finalize = pk_task_text_finalize;
 	task_class->untrusted_question = pk_task_text_untrusted_question;
 	task_class->key_question = pk_task_text_key_question;
 	task_class->eula_question = pk_task_text_eula_question;
 	task_class->media_change_question = pk_task_text_media_change_question;
 	task_class->simulate_question = pk_task_text_simulate_question;
-
-	g_type_class_add_private (klass, sizeof (PkTaskTextPrivate));
 }
 
 /*
@@ -456,20 +452,6 @@ pk_task_text_class_init (PkTaskTextClass *klass)
 static void
 pk_task_text_init (PkTaskText *task)
 {
-	task->priv = PK_TASK_TEXT_GET_PRIVATE (task);
-	task->priv->user_data = NULL;
-}
-
-/*
- * pk_task_text_finalize:
- * @object: The object to finalize
- **/
-static void
-pk_task_text_finalize (GObject *object)
-{
-	PkTaskText *task = PK_TASK_TEXT (object);
-	task->priv->user_data = NULL;
-	G_OBJECT_CLASS (pk_task_text_parent_class)->finalize (object);
 }
 
 /**

@@ -30,8 +30,7 @@ using std::vector;
 /**
  * A designated action to perform on a package.
  */
-enum class PkgAction
-{
+enum class PkgAction {
     NONE,
     INSTALL_AUTO,
     INSTALL_MANUAL
@@ -68,12 +67,15 @@ public:
      */
     void append(const pkgCache::VerIterator &verIter, PkgAction action = PkgAction::NONE);
 
-    void append(const PkgInfo &pi) { this->push_back(pi); };
+    void append(const PkgInfo &pi)
+    {
+        this->push_back(pi);
+    };
 
     /**
      * Return if the given vector contain a package
      */
-    bool contains(const pkgCache::PkgIterator &pkg);
+    bool contains(const pkgCache::PkgIterator &pkg) const;
 
     /**
      * Sort the package list

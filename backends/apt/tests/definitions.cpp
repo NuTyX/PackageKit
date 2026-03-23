@@ -177,7 +177,8 @@ pk_backend_job_details (PkBackendJob *job,
                         PkGroupEnum group,
                         const gchar *description,
                         const gchar *url,
-                        gulong size)
+                        gulong size,
+                        guint64 download_size)
 {
 }
 

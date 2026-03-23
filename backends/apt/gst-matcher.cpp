@@ -36,9 +36,10 @@ GstMatcher::GstMatcher(gchar **values)
     // The search term from PackageKit daemon:
     // gstreamer0.10(urisource-foobar)
     // gstreamer0.10(decoder-audio/x-wma)(wmaversion=3)
-    const char *pkreg = "^gstreamer\\(0.10\\|1\\)\\(\\.0\\)\\?"
-                        "(\\(encoder\\|decoder\\|urisource\\|urisink\\|element\\)-\\([^)]\\+\\))"
-                        "\\((.*)\\)\\?";
+    const char *pkreg =
+        "^gstreamer\\(0.10\\|1\\)\\(\\.0\\)\\?"
+        "(\\(encoder\\|decoder\\|urisource\\|urisink\\|element\\)-\\([^)]\\+\\))"
+        "\\((.*)\\)\\?";
 
     regex_t pkre;
     if (regcomp(&pkre, pkreg, 0) != 0) {
@@ -51,8 +52,9 @@ GstMatcher::GstMatcher(gchar **values)
         value = values[i];
         regmatch_t matches[6];
         if (regexec(&pkre, value, 6, matches, 0) != REG_NOMATCH) {
-            Match values;
-            string version, type, data, opt, arch;
+            Match mvals;
+            string version, type, data, opt;
+            bool native = false;
 
             // Appends the version "0.10"
             version = "\nGstreamer-Version: ";
@@ -71,17 +73,21 @@ GstMatcher::GstMatcher(gchar **values)
                 if (!opt.empty()) {
                     size_t start_pos = 0;
                     // This is hardcoded in pk-gstreamer-install, so we also hardcode it here
-                    const string x86_64 = ")(64bit";
-
-                    if (ends_with(opt.c_str(), x86_64.c_str())) {
-                            // We hardcode 64bit -> amd64 here
-                            arch = "amd64";
-                            opt.erase(opt.end() - x86_64.length(), opt.end());
+                    const string arch_64 = ")(64bit";
+                    if (ends_with(opt.c_str(), arch_64.c_str())) {
+                        /* The ()(64bit) suffix is an RPM artifact, where it is used to distinguish
+                         * between the primary and secondary architecture in a 2-arch system.
+                         * It doesn't translate precisely to DPKG, where multi-arch is not limited
+                         * to one secondary architecture. Let's use it the same way RPM would and
+                         * only match the native arch.
+                         */
+                        native = true;
+                        opt.erase(opt.end() - arch_64.length(), opt.end());
                     }
 
                     // Replace all ")(" with "," - convert from input to serialized caps format
                     while ((start_pos = opt.find(")(", start_pos)) != string::npos) {
-                        if (start_pos == opt.length()-2) {
+                        if (start_pos == opt.length() - 2) {
                             // Avoid trailing comma
                             opt.erase(start_pos, 2);
                             break;
@@ -117,14 +123,14 @@ GstMatcher::GstMatcher(gchar **values)
                 continue;
             }
 
-            values.version = version;
-            values.type    = type;
-            values.data    = data;
-            values.opt     = opt;
-            values.caps    = caps;
-            values.arch    = arch;
+            mvals.version = version;
+            mvals.type = type;
+            mvals.data = data;
+            mvals.opt = opt;
+            mvals.caps = caps;
+            mvals.native = native;
 
-            m_matches.push_back(values);
+            m_matches.push_back(mvals);
         } else {
             g_debug("gstmatcher: Did not match: %s", value);
         }
@@ -135,18 +141,18 @@ GstMatcher::GstMatcher(gchar **values)
 GstMatcher::~GstMatcher()
 {
     for (const Match &match : m_matches) {
-        gst_caps_unref(static_cast<GstCaps*>(match.caps));
+        gst_caps_unref(static_cast<GstCaps *>(match.caps));
     }
 }
 
-bool GstMatcher::matches(string record, string arch)
+bool GstMatcher::matches(string record, bool native)
 {
     for (const Match &match : m_matches) {
         // Tries to find "Gstreamer-version: xxx"
         if (record.find(match.version) != string::npos) {
             size_t found;
-            if (!match.arch.empty() && arch != match.arch)
-                    continue;
+            if (match.native && !native)
+                continue;
             found = record.find(match.type);
             // Tries to find the type "Gstreamer-Uri-Sinks: "
             if (found != string::npos) {
@@ -161,7 +167,7 @@ bool GstMatcher::matches(string record, string arch)
                 }
 
                 // if the record is capable of intersect them we found the package
-                bool provides = gst_caps_can_intersect(static_cast<GstCaps*>(match.caps), caps);
+                bool provides = gst_caps_can_intersect(static_cast<GstCaps *>(match.caps), caps);
                 gst_caps_unref(caps);
 
                 if (provides) {

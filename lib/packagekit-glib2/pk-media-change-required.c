@@ -38,8 +38,6 @@
 
 static void     pk_media_change_required_finalize	(GObject     *object);
 
-#define PK_MEDIA_CHANGE_REQUIRED_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), PK_TYPE_MEDIA_CHANGE_REQUIRED, PkMediaChangeRequiredPrivate))
-
 /**
  * PkMediaChangeRequiredPrivate:
  *
@@ -60,7 +58,8 @@ enum {
 	PROP_LAST
 };
 
-G_DEFINE_TYPE (PkMediaChangeRequired, pk_media_change_required, PK_TYPE_SOURCE)
+G_DEFINE_TYPE_WITH_PRIVATE (PkMediaChangeRequired, pk_media_change_required, PK_TYPE_SOURCE)
+#define GET_PRIVATE(o) (pk_media_change_required_get_instance_private (o))
 
 /*
  * pk_media_change_required_get_property:
@@ -69,7 +68,7 @@ static void
 pk_media_change_required_get_property (GObject *object, guint prop_id, GValue *value, GParamSpec *pspec)
 {
 	PkMediaChangeRequired *media_change_required = PK_MEDIA_CHANGE_REQUIRED (object);
-	PkMediaChangeRequiredPrivate *priv = media_change_required->priv;
+	PkMediaChangeRequiredPrivate *priv = GET_PRIVATE(media_change_required);
 
 	switch (prop_id) {
 	case PROP_MEDIA_TYPE:
@@ -94,7 +93,7 @@ static void
 pk_media_change_required_set_property (GObject *object, guint prop_id, const GValue *value, GParamSpec *pspec)
 {
 	PkMediaChangeRequired *media_change_required = PK_MEDIA_CHANGE_REQUIRED (object);
-	PkMediaChangeRequiredPrivate *priv = media_change_required->priv;
+	PkMediaChangeRequiredPrivate *priv = GET_PRIVATE(media_change_required);
 
 	switch (prop_id) {
 	case PROP_MEDIA_TYPE:
@@ -102,11 +101,11 @@ pk_media_change_required_set_property (GObject *object, guint prop_id, const GVa
 		break;
 	case PROP_MEDIA_ID:
 		g_free (priv->media_id);
-		priv->media_id = g_strdup (g_value_get_string (value));
+		priv->media_id = g_value_dup_string (value);
 		break;
 	case PROP_MEDIA_TEXT:
 		g_free (priv->media_text);
-		priv->media_text = g_strdup (g_value_get_string (value));
+		priv->media_text = g_value_dup_string (value);
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -155,8 +154,6 @@ pk_media_change_required_class_init (PkMediaChangeRequiredClass *klass)
 				     NULL,
 				     G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 	g_object_class_install_property (object_class, PROP_MEDIA_TEXT, pspec);
-
-	g_type_class_add_private (klass, sizeof (PkMediaChangeRequiredPrivate));
 }
 
 /*
@@ -165,7 +162,7 @@ pk_media_change_required_class_init (PkMediaChangeRequiredClass *klass)
 static void
 pk_media_change_required_init (PkMediaChangeRequired *media_change_required)
 {
-	media_change_required->priv = PK_MEDIA_CHANGE_REQUIRED_GET_PRIVATE (media_change_required);
+	media_change_required->priv = GET_PRIVATE(media_change_required);
 }
 
 /*
@@ -175,10 +172,10 @@ static void
 pk_media_change_required_finalize (GObject *object)
 {
 	PkMediaChangeRequired *media_change_required = PK_MEDIA_CHANGE_REQUIRED (object);
-	PkMediaChangeRequiredPrivate *priv = media_change_required->priv;
+	PkMediaChangeRequiredPrivate *priv = GET_PRIVATE(media_change_required);
 
-	g_free (priv->media_id);
-	g_free (priv->media_text);
+	g_clear_pointer (&priv->media_id, g_free);
+	g_clear_pointer (&priv->media_text, g_free);
 
 	G_OBJECT_CLASS (pk_media_change_required_parent_class)->finalize (object);
 }
@@ -197,4 +194,3 @@ pk_media_change_required_new (void)
 	media_change_required = g_object_new (PK_TYPE_MEDIA_CHANGE_REQUIRED, NULL);
 	return PK_MEDIA_CHANGE_REQUIRED (media_change_required);
 }
-

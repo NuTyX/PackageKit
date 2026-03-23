@@ -130,7 +130,7 @@ main (int argc, char *argv[])
 		{ "keep-environment", '\0', 0, G_OPTION_ARG_NONE, &keep_environment,
 		  /* TRANSLATORS: don't unset environment variables, used for debugging */
 		  _("Don't clear environment on startup"), NULL },
-		{ NULL }
+		G_OPTION_ENTRY_NULL
 	};
 
 	setlocale (LC_ALL, "");
@@ -159,6 +159,12 @@ main (int argc, char *argv[])
 #ifdef HAVE_CLEARENV
 	if (!keep_environment)
 		clearenv ();
+#else
+	if (!keep_environment) {
+		extern char **environ;
+		if (environ)
+			environ[0] = NULL;
+	}
 #endif
 
 	/* get values from the config file */

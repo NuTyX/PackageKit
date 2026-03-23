@@ -38,8 +38,6 @@
 
 static void     pk_distro_upgrade_finalize	(GObject     *object);
 
-#define PK_DISTRO_UPGRADE_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), PK_TYPE_DISTRO_UPGRADE, PkDistroUpgradePrivate))
-
 /**
  * PkDistroUpgradePrivate:
  *
@@ -60,7 +58,8 @@ enum {
 	PROP_LAST
 };
 
-G_DEFINE_TYPE (PkDistroUpgrade, pk_distro_upgrade, PK_TYPE_SOURCE)
+G_DEFINE_TYPE_WITH_PRIVATE (PkDistroUpgrade, pk_distro_upgrade, PK_TYPE_SOURCE)
+#define GET_PRIVATE(o) (pk_distro_upgrade_get_instance_private (o))
 
 /**
  * pk_distro_upgrade_get_id:
@@ -76,8 +75,11 @@ G_DEFINE_TYPE (PkDistroUpgrade, pk_distro_upgrade, PK_TYPE_SOURCE)
 const gchar *
 pk_distro_upgrade_get_id (PkDistroUpgrade *distro_upgrade)
 {
+	PkDistroUpgradePrivate *priv = GET_PRIVATE(distro_upgrade);
+
 	g_return_val_if_fail (PK_IS_DISTRO_UPGRADE (distro_upgrade), NULL);
-	return distro_upgrade->priv->name;
+
+	return priv->name;
 }
 
 /**
@@ -93,8 +95,11 @@ pk_distro_upgrade_get_id (PkDistroUpgrade *distro_upgrade)
 const gchar *
 pk_distro_upgrade_get_summary (PkDistroUpgrade *distro_upgrade)
 {
+	PkDistroUpgradePrivate *priv = GET_PRIVATE(distro_upgrade);
+
 	g_return_val_if_fail (PK_IS_DISTRO_UPGRADE (distro_upgrade), NULL);
-	return distro_upgrade->priv->summary;
+
+	return priv->summary;
 }
 
 /**
@@ -110,8 +115,11 @@ pk_distro_upgrade_get_summary (PkDistroUpgrade *distro_upgrade)
 PkDistroUpgradeEnum
 pk_distro_upgrade_get_state (PkDistroUpgrade *distro_upgrade)
 {
+	PkDistroUpgradePrivate *priv = GET_PRIVATE(distro_upgrade);
+
 	g_return_val_if_fail (PK_IS_DISTRO_UPGRADE (distro_upgrade), PK_DISTRO_UPGRADE_ENUM_UNKNOWN);
-	return distro_upgrade->priv->state;
+
+	return priv->state;
 }
 
 
@@ -122,7 +130,7 @@ static void
 pk_distro_upgrade_get_property (GObject *object, guint prop_id, GValue *value, GParamSpec *pspec)
 {
 	PkDistroUpgrade *distro_upgrade = PK_DISTRO_UPGRADE (object);
-	PkDistroUpgradePrivate *priv = distro_upgrade->priv;
+	PkDistroUpgradePrivate *priv = GET_PRIVATE(distro_upgrade);
 
 	switch (prop_id) {
 	case PROP_STATE:
@@ -147,7 +155,7 @@ static void
 pk_distro_upgrade_set_property (GObject *object, guint prop_id, const GValue *value, GParamSpec *pspec)
 {
 	PkDistroUpgrade *distro_upgrade = PK_DISTRO_UPGRADE (object);
-	PkDistroUpgradePrivate *priv = distro_upgrade->priv;
+	PkDistroUpgradePrivate *priv = GET_PRIVATE(distro_upgrade);
 
 	switch (prop_id) {
 	case PROP_STATE:
@@ -155,11 +163,11 @@ pk_distro_upgrade_set_property (GObject *object, guint prop_id, const GValue *va
 		break;
 	case PROP_NAME:
 		g_free (priv->name);
-		priv->name = g_strdup (g_value_get_string (value));
+		priv->name = g_value_dup_string (value);
 		break;
 	case PROP_SUMMARY:
 		g_free (priv->summary);
-		priv->summary = g_strdup (g_value_get_string (value));
+		priv->summary = g_value_dup_string (value);
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -208,8 +216,6 @@ pk_distro_upgrade_class_init (PkDistroUpgradeClass *klass)
 				     NULL,
 				     G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 	g_object_class_install_property (object_class, PROP_SUMMARY, pspec);
-
-	g_type_class_add_private (klass, sizeof (PkDistroUpgradePrivate));
 }
 
 /*
@@ -218,7 +224,7 @@ pk_distro_upgrade_class_init (PkDistroUpgradeClass *klass)
 static void
 pk_distro_upgrade_init (PkDistroUpgrade *distro_upgrade)
 {
-	distro_upgrade->priv = PK_DISTRO_UPGRADE_GET_PRIVATE (distro_upgrade);
+	distro_upgrade->priv = GET_PRIVATE(distro_upgrade);
 }
 
 /*
@@ -228,10 +234,10 @@ static void
 pk_distro_upgrade_finalize (GObject *object)
 {
 	PkDistroUpgrade *distro_upgrade = PK_DISTRO_UPGRADE (object);
-	PkDistroUpgradePrivate *priv = distro_upgrade->priv;
+	PkDistroUpgradePrivate *priv = GET_PRIVATE(distro_upgrade);
 
-	g_free (priv->name);
-	g_free (priv->summary);
+	g_clear_pointer (&priv->name, g_free);
+	g_clear_pointer (&priv->summary, g_free);
 
 	G_OBJECT_CLASS (pk_distro_upgrade_parent_class)->finalize (object);
 }
@@ -250,4 +256,3 @@ pk_distro_upgrade_new (void)
 	distro_upgrade = g_object_new (PK_TYPE_DISTRO_UPGRADE, NULL);
 	return PK_DISTRO_UPGRADE (distro_upgrade);
 }
-
