@@ -3,7 +3,7 @@ project('PackageKit', 'c',
   default_options : ['warning_level=2', 'c_std=gnu17'],
 
   license : 'LGPL-2.1+',
-  version : '1.3.5',
+  version : '1.3.6',
 )
 
 gnome = import('gnome')
@@ -127,7 +127,6 @@ if get_option('maintainer')
             '-Winit-self',
             '-Wnull-dereference',
             '-Wfloat-equal',
-            '-Winline',
             '-Wno-error=comment',
         ], checked: 'warn'),
         language: ['c', 'cpp']
@@ -141,7 +140,6 @@ add_project_arguments(
     cc.get_supported_arguments([
         '-Werror=missing-include-dirs',
         '-Wno-strict-aliasing',
-        '-Winline',
         '-Wno-unused-parameter',
         '-Wno-error=unused-parameter',
     ]),
