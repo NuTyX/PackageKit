@@ -242,6 +242,8 @@ pk_backend_get_roles(PkBackend *backend)
                 PK_ROLE_ENUM_CANCEL,
                 PK_ROLE_ENUM_GET_FILES,
                 PK_ROLE_ENUM_GET_PACKAGES,
+                PK_ROLE_ENUM_GET_DETAILS,
+                PK_ROLE_ENUM_GET_DETAILS_LOCAL,
                 PK_ROLE_ENUM_RESOLVE,
                 PK_ROLE_ENUM_REFRESH_CACHE,
                 PK_ROLE_ENUM_GET_UPDATES,
